@@ -72,19 +72,11 @@ def get_model_name(input_model_name: str | None = None, config: dict | None = No
         return from_config
     if from_env := os.getenv("MSWEA_MODEL_NAME"):
         return from_env
-    raise ValueError("No default model set. Please run `mini-extra config setup` to set one.")
+    raise ValueError("No default model set. Pass --model or set MSWEA_MODEL_NAME.")
 
 
 _MODEL_CLASS_MAPPING = {
     "litellm": "arkui_ut_agent.models.litellm_model.LitellmModel",
-    "litellm_textbased": "arkui_ut_agent.models.litellm_textbased_model.LitellmTextbasedModel",
-    "litellm_response": "arkui_ut_agent.models.litellm_response_model.LitellmResponseModel",
-    "openrouter": "arkui_ut_agent.models.openrouter_model.OpenRouterModel",
-    "openrouter_textbased": "arkui_ut_agent.models.openrouter_textbased_model.OpenRouterTextbasedModel",
-    "openrouter_response": "arkui_ut_agent.models.openrouter_response_model.OpenRouterResponseModel",
-    "portkey": "arkui_ut_agent.models.portkey_model.PortkeyModel",
-    "portkey_response": "arkui_ut_agent.models.portkey_response_model.PortkeyResponseAPIModel",
-    "requesty": "arkui_ut_agent.models.requesty_model.RequestyModel",
     "deterministic": "arkui_ut_agent.models.test_models.DeterministicModel",
 }
 
@@ -93,7 +85,7 @@ def get_model_class(model_name: str, model_class: str = "") -> type:
     """Select the best model class.
 
     If a model_class is provided (as shortcut name, or as full import path,
-    e.g., "anthropic" or "arkui_ut_agent.models.anthropic.AnthropicModel"),
+    e.g., "litellm" or "arkui_ut_agent.models.litellm_model.LitellmModel"),
     it takes precedence over the `model_name`.
     Otherwise, the model_name is used to select the best model class.
     """

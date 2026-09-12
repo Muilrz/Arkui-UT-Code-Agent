@@ -33,7 +33,7 @@ console = Console(highlight=False)
 
 _SETUP_HELP = """To get started, we need to set up your global config file.
 
-You can edit it manually or use the [bold green]mini-extra config set[/bold green] or [bold green]mini-extra config edit[/bold green] commands.
+You can edit it manually or complete this setup prompt.
 
 This setup will ask you for your model and an API key.
 
@@ -48,7 +48,6 @@ Here's a few popular models and the required API keys:
 [bold yellow]You can leave any setting blank to skip it.[/bold yellow]
 
 More information at https://github.com/Muilrz/Arkui-UT-Code-Agent
-To find the best model, check the leaderboard at https://swebench.com/
 """
 
 
@@ -92,7 +91,7 @@ def setup():
     set_key(global_config_file, "MSWEA_CONFIGURED", "true")
     _reload_config()
     console.print(
-        "\n[bold yellow]Config finished.[/bold yellow] If you want to revisit it, run [bold green]mini-extra config setup[/bold green]."
+        f"\n[bold yellow]Config finished.[/bold yellow] To revisit it, edit [bold green]'{global_config_file}'[/bold green]."
     )
 
 

@@ -43,7 +43,7 @@ Examples:
 
 [bold green]-c mini.yaml -c model.model_kwargs.temperature=0.5[/bold green]
 
-[bold green]-c swebench.yaml agent.mode=yolo[/bold green]
+[bold green]-c mini.yaml -c agent.mode=yolo[/bold green]
 """
 
 console = Console(highlight=False)

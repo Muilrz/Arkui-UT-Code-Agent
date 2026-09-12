@@ -7,7 +7,7 @@ from jinja2 import StrictUndefined, Template
 
 from arkui_ut_agent.exceptions import FormatError
 
-# OpenRouter/OpenAI Responses API uses a flat structure (no nested "function" key)
+# Responses-style tool calls use a flat structure (no nested "function" key).
 BASH_TOOL_RESPONSE_API = {
     "type": "function",
     "name": "bash",

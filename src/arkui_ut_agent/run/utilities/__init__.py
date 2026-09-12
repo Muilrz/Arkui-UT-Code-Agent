@@ -1,1 +1,1 @@
-"""Utility modules for arkui-ut-code-agent (config management, inspector, etc.)."""
+"""Configuration utilities for arkui-ut-code-agent."""

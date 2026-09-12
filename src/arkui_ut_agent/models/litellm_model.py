@@ -70,7 +70,7 @@ class LitellmModel:
                 **(self.config.model_kwargs | kwargs),
             )
         except litellm.exceptions.AuthenticationError as e:
-            e.message += " You can permanently set your API key with `mini-extra config set KEY VALUE`."
+            e.message += " Set the provider API key in your environment or global .env file."
             raise e
 
     def _prepare_messages_for_api(self, messages: list[dict]) -> list[dict]:

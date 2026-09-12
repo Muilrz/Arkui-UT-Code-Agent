@@ -4,8 +4,6 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import pytest
-
 from arkui_ut_agent.run.mini import DEFAULT_CONFIG_FILE, app, main
 
 
@@ -351,19 +349,6 @@ def test_python_m_arkui_ut_agent_help():
     assert "arkui-ut-code-agent" in result.stdout
 
 
-def test_mini_script_help():
-    """Test that the mini script entry point help works."""
-    result = subprocess.run(
-        ["mini", "--help"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 0
-    assert "arkui-ut-code-agent" in result.stdout
-
-
 def test_arkui_ut_agent_help():
     """Test that arkui-ut-agent --help works correctly."""
     result = subprocess.run(
@@ -376,77 +361,6 @@ def test_arkui_ut_agent_help():
     assert result.returncode == 0
     clean_output = strip_ansi_codes(result.stdout)
     assert "arkui-ut-code-agent" in clean_output
-
-
-def test_mini_extra_help():
-    """Test that mini-extra --help works correctly."""
-    result = subprocess.run(
-        ["mini-extra", "--help"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 0
-    clean_output = strip_ansi_codes(result.stdout)
-    assert "central entry point for all extra commands" in clean_output
-    assert "config" in clean_output
-    assert "inspect" in clean_output
-    assert "swebench" in clean_output
-
-
-def test_mini_e_help():
-    """Test that mini-e --help works correctly."""
-    result = subprocess.run(
-        ["mini-e", "--help"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 0
-    clean_output = strip_ansi_codes(result.stdout)
-    assert "central entry point for all extra commands" in clean_output
-
-
-@pytest.mark.parametrize(
-    ("subcommand", "aliases"),
-    [
-        ("config", ["config"]),
-        ("inspect", ["inspect", "i", "inspector"]),
-        ("swebench", ["swebench"]),
-        ("swebench-single", ["swebench-single"]),
-    ],
-)
-def test_mini_extra_subcommand_help(subcommand: str, aliases: list[str]):
-    """Test that mini-extra subcommands --help work correctly."""
-    for alias in aliases:
-        result = subprocess.run(
-            ["mini-extra", alias, "--help"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        assert result.returncode == 0
-        # Just verify that help output is returned (content varies by subcommand)
-        assert len(result.stdout) > 0
-
-
-def test_mini_extra_config_help():
-    """Test that mini-extra config --help works correctly."""
-    result = subprocess.run(
-        ["mini-extra", "config", "--help"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 0
-    assert len(result.stdout) > 0
-    # Config command should have help output
-    clean_output = strip_ansi_codes(result.stdout)
-    assert "--help" in clean_output
 
 
 def test_exit_immediately_flag_sets_confirm_exit_false():

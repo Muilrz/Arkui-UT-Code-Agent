@@ -35,12 +35,12 @@ class TestGetModelName:
         """Test that ValueError is raised when no model is configured anywhere."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(
-                ValueError, match="No default model set. Please run `mini-extra config setup` to set one."
+                ValueError, match="No default model set. Pass --model or set MSWEA_MODEL_NAME."
             ):
                 get_model_name(None, {})
 
             with pytest.raises(
-                ValueError, match="No default model set. Please run `mini-extra config setup` to set one."
+                ValueError, match="No default model set. Pass --model or set MSWEA_MODEL_NAME."
             ):
                 get_model_name(None, None)
 
@@ -69,13 +69,6 @@ class TestGetModelClass:
         assert get_model_class("opus-v2") == LitellmModel
         assert get_model_class("gpt-anthropic-style") == LitellmModel
         assert get_model_class("totally-different") == LitellmModel
-
-    def test_litellm_response_model_selection(self):
-        """Test that litellm_response model class can be selected."""
-        from arkui_ut_agent.models.litellm_response_model import LitellmResponseModel
-
-        assert get_model_class("any-model", "litellm_response") == LitellmResponseModel
-
 
 class TestGetModel:
     def test_config_deep_copy(self):

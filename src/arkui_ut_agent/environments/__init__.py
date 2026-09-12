@@ -6,13 +6,7 @@ import importlib
 from arkui_ut_agent import Environment
 
 _ENVIRONMENT_MAPPING = {
-    "docker": "arkui_ut_agent.environments.docker.DockerEnvironment",
-    "singularity": "arkui_ut_agent.environments.singularity.SingularityEnvironment",
     "local": "arkui_ut_agent.environments.local.LocalEnvironment",
-    "swerex_docker": "arkui_ut_agent.environments.extra.swerex_docker.SwerexDockerEnvironment",
-    "swerex_modal": "arkui_ut_agent.environments.extra.swerex_modal.SwerexModalEnvironment",
-    "bubblewrap": "arkui_ut_agent.environments.extra.bubblewrap.BubblewrapEnvironment",
-    "contree": "arkui_ut_agent.environments.extra.contree.ContreeEnvironment",
 }
 
 

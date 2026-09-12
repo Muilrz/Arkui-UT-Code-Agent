@@ -1,10 +1,19 @@
 import json
 import re
-import subprocess
+import sys
 import threading
 from pathlib import Path
 
 import pytest
+
+if sys.platform == "win32":
+    from prompt_toolkit.application.current import get_app_session
+    from prompt_toolkit.output import DummyOutput
+
+    # pytest's captured streams are not Win32 console handles.  Give
+    # prompt_toolkit a non-interactive output before prompt sessions are
+    # constructed during test collection.
+    get_app_session()._output = DummyOutput()  # noqa: SLF001
 
 from arkui_ut_agent.models import GLOBAL_MODEL_STATS
 
@@ -40,30 +49,6 @@ def reset_global_stats():
         GLOBAL_MODEL_STATS._n_calls = 0  # noqa: protected-access
 
 
-def _get_container_executable() -> str | None:
-    """Return 'docker' or 'podman', whichever is available and running."""
-    for exe in ("docker", "podman"):
-        try:
-            subprocess.run([exe, "version"], capture_output=True, check=True, timeout=5)
-            return exe
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            continue
-    return None
-
-
-@pytest.fixture
-def container_executable(monkeypatch):
-    """Provide the available container executable, skip if neither docker nor podman is available.
-
-    Sets MSWEA_DOCKER_EXECUTABLE so DockerEnvironment uses the right executable.
-    """
-    exe = _get_container_executable()
-    if exe is None:
-        pytest.skip("Neither docker nor podman is available")
-    monkeypatch.setenv("MSWEA_DOCKER_EXECUTABLE", exe)
-    return exe
-
-
 def get_test_data(trajectory_name: str) -> dict[str, list[str]]:
     """Load test fixtures from a trajectory JSON file"""
     json_path = Path(__file__).parent / "test_data" / f"{trajectory_name}.traj.json"
@@ -89,7 +74,7 @@ def get_test_data(trajectory_name: str) -> dict[str, list[str]]:
 
 def normalize_outputs(s: str) -> str:
     """Strip leading/trailing whitespace and normalize internal whitespace"""
-    # Remove everything between <args> and </args>, because this contains docker container ids
+    # Remove volatile command arguments before comparing observations.
     s = re.sub(r"<args>(.*?)</args>", "", s, flags=re.DOTALL)
     # Replace all lines that have root in them because they tend to appear with times
     s = "\n".join(l for l in s.split("\n") if "root root" not in l)
@@ -122,12 +107,6 @@ def assert_observations_match(expected_observations: list[str], messages: list[d
         assert normalized_actual == normalized_expected, (
             f"Step {i + 1} observation mismatch:\nExpected: {repr(normalized_expected)}\nActual: {repr(normalized_actual)}"
         )
-
-
-@pytest.fixture
-def github_test_data():
-    """Load GitHub issue test fixtures"""
-    return get_test_data("github_issue")
 
 
 @pytest.fixture
