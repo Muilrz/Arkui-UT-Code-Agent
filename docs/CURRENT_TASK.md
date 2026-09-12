@@ -14,7 +14,7 @@ Codex 每次开始开发时应优先读取本文件，但长期边界仍以 `SPE
 
 ## 2. Current Objective
 
-**基于选定的 `mini-swe-agent` baseline 建立可运行仓库，并确认项目模块边界；不要过早实现复杂 Agent 功能。**
+**基于选定的 `arkui-ut-code-agent` baseline 建立可运行仓库，并确认项目模块边界；不要过早实现复杂 Agent 功能。**
 
 当前目标是先获得一个干净、可验证的 baseline，然后进入第一个真正开发 Slice：
 
@@ -26,7 +26,7 @@ ToolResult
 
 ## 3. 当前 In Scope
 
-1. Fork/import 并 pin `mini-swe-agent` baseline。
+1. Fork/import 并 pin `arkui-ut-code-agent` baseline。
 2. 阅读真实 upstream package/module 结构。
 3. 标记 reused vs project-owned modules。
 4. 建立初始 package layout，至少覆盖：
@@ -83,7 +83,7 @@ TODO: minimal CLI smoke-test command
 
 当前待确认：
 
-- `mini-swe-agent` 最终 pin 的 revision；
+- `arkui-ut-code-agent` 最终 pin 的 revision；
 - 目标环境里 ArkUI KB 的真实调用接口/命令；
 - ArkUI/Ace Engine 环境中 `compile_commands.json` 的稳定获取方式；
 - Stage 6 集成时 `felipeerias/clangd-mcp-server` 的最终 pin revision 与真实 Tool schema。

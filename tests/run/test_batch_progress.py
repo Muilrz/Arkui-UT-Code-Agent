@@ -1,7 +1,7 @@
 import pytest
 import yaml
 
-from minisweagent.run.benchmarks.utils.batch_progress import RunBatchProgressManager, _shorten_str
+from arkui_ut_agent.run.benchmarks.utils.batch_progress import RunBatchProgressManager, _shorten_str
 
 
 @pytest.fixture

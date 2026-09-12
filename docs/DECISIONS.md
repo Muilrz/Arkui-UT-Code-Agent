@@ -13,11 +13,11 @@
 
 ---
 
-## D-001 — 以 `mini-swe-agent` 作为主要运行底座
+## D-001 — 以 `arkui-ut-code-agent` 作为主要运行底座
 
 **Status：accepted**
 
-**Decision：** 复用 `mini-swe-agent` 的 Model、Environment、CLI/config、基础 trajectory、step/cost/time-limit 等通用能力；默认线性 Agent Control Flow 由本项目扩展/替换为 task-aware control plane。
+**Decision：** 复用 `arkui-ut-code-agent` 的 Model、Environment、CLI/config、基础 trajectory、step/cost/time-limit 等通用能力；默认线性 Agent Control Flow 由本项目扩展/替换为 task-aware control plane。
 
 **Reason：** 项目复杂度应投入 ArkUI 专项 Agent 能力，而不是重新实现通用 Code Agent runtime。
 

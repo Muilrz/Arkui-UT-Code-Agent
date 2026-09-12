@@ -2,16 +2,16 @@ import json
 import tempfile
 from pathlib import Path
 
-from minisweagent.agents.default import DefaultAgent
-from minisweagent.environments.local import LocalEnvironment
-from minisweagent.models.test_models import DeterministicModel, make_output
+from arkui_ut_agent.agents.default import DefaultAgent
+from arkui_ut_agent.environments.local import LocalEnvironment
+from arkui_ut_agent.models.test_models import DeterministicModel, make_output
 
 
 def test_agent_save_includes_class_names():
     """Test that agent.save includes the full class names with import paths."""
     import yaml
 
-    config_path = Path("src/minisweagent/config/default.yaml")
+    config_path = Path("src/arkui_ut_agent/config/default.yaml")
     with open(config_path) as f:
         default_config = yaml.safe_load(f)["agent"]
 
@@ -39,20 +39,20 @@ def test_agent_save_includes_class_names():
         assert "model_type" in config
         assert "environment_type" in config
 
-        assert config["agent_type"] == "minisweagent.agents.default.DefaultAgent"
-        assert config["model_type"] == "minisweagent.models.test_models.DeterministicModel"
-        assert config["environment_type"] == "minisweagent.environments.local.LocalEnvironment"
+        assert config["agent_type"] == "arkui_ut_agent.agents.default.DefaultAgent"
+        assert config["model_type"] == "arkui_ut_agent.models.test_models.DeterministicModel"
+        assert config["environment_type"] == "arkui_ut_agent.environments.local.LocalEnvironment"
 
         assert saved_data["info"]["exit_status"] == "Submitted"
         assert saved_data["info"]["submission"] == "test result"
-        assert saved_data["trajectory_format"] == "mini-swe-agent-1.1"
+        assert saved_data["trajectory_format"] == "arkui-ut-code-agent-1.1"
 
 
 def test_agent_serialize():
     """Test that agent.serialize returns the correct structure."""
     import yaml
 
-    config_path = Path("src/minisweagent/config/default.yaml")
+    config_path = Path("src/arkui_ut_agent/config/default.yaml")
     with open(config_path) as f:
         default_config = yaml.safe_load(f)["agent"]
 

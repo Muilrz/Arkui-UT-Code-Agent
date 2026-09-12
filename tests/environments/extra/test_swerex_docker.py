@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from minisweagent.environments.extra.swerex_docker import SwerexDockerEnvironment
+from arkui_ut_agent.environments.extra.swerex_docker import SwerexDockerEnvironment
 
 
 def _is_docker_available():

@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from minisweagent.exceptions import FormatError
-from minisweagent.models.utils.actions_toolcall import (
+from arkui_ut_agent.exceptions import FormatError
+from arkui_ut_agent.models.utils.actions_toolcall import (
     BASH_TOOL,
     format_toolcall_observation_messages,
     parse_toolcall_actions,

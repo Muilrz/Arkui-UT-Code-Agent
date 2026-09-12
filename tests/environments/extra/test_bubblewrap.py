@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from minisweagent.environments.extra.bubblewrap import BubblewrapEnvironment, BubblewrapEnvironmentConfig
+from arkui_ut_agent.environments.extra.bubblewrap import BubblewrapEnvironment, BubblewrapEnvironmentConfig
 
 
 @pytest.mark.skipif(not shutil.which("bwrap"), reason="bubblewrap not available")

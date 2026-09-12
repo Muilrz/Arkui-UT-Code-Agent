@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 import litellm
 import pytest
 
-from minisweagent.models import GLOBAL_MODEL_STATS
-from minisweagent.models.litellm_textbased_model import LitellmTextbasedModel
+from arkui_ut_agent.models import GLOBAL_MODEL_STATS
+from arkui_ut_agent.models.litellm_textbased_model import LitellmTextbasedModel
 
 
 def test_authentication_error_enhanced_message():

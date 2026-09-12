@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 from jinja2 import StrictUndefined, Template
 
-from minisweagent.agents.default import AgentConfig
+from arkui_ut_agent.agents.default import AgentConfig
 
 
 @dataclass
@@ -22,7 +22,7 @@ def test_observation_template_short_output():
     config_path = (
         Path(__file__).parent.parent.parent
         / "src"
-        / "minisweagent"
+        / "arkui_ut_agent"
         / "config"
         / "benchmarks"
         / "swebench_backticks.yaml"
@@ -60,7 +60,7 @@ def test_observation_template_long_output():
     config_path = (
         Path(__file__).parent.parent.parent
         / "src"
-        / "minisweagent"
+        / "arkui_ut_agent"
         / "config"
         / "benchmarks"
         / "swebench_backticks.yaml"
@@ -112,7 +112,7 @@ def test_observation_template_edge_case_exactly_10000_chars():
     config_path = (
         Path(__file__).parent.parent.parent
         / "src"
-        / "minisweagent"
+        / "arkui_ut_agent"
         / "config"
         / "benchmarks"
         / "swebench_backticks.yaml"
@@ -145,7 +145,7 @@ def test_observation_template_just_under_10000_chars():
     config_path = (
         Path(__file__).parent.parent.parent
         / "src"
-        / "minisweagent"
+        / "arkui_ut_agent"
         / "config"
         / "benchmarks"
         / "swebench_backticks.yaml"

@@ -2,7 +2,7 @@
 
 ## 项目目的
 
-本仓库开发一个面向 **ArkUI Ace Engine 大型 C++ 代码库**的 UT Code Agent，基于 `mini-swe-agent` 的轻量运行骨架进行二次开发。
+本仓库开发一个面向 **ArkUI Ace Engine 大型 C++ 代码库**的 UT Code Agent，基于 `arkui-ut-code-agent` 的轻量运行骨架进行二次开发。
 
 项目重点是 Agent 自身的控制与任务闭环，而不是重复建设 C++ 语义基础设施或全仓知识平台。
 

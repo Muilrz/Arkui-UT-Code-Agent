@@ -4,7 +4,7 @@
 
 开发一个面向 **ArkUI Ace Engine 大型 C++ 代码库**的源码分析、UT 开发与 UT Repair Code Agent。
 
-项目基于 `mini-swe-agent` 的轻量运行骨架进行二次开发，优先复用：
+项目基于 `arkui-ut-code-agent` 的轻量运行骨架进行二次开发，优先复用：
 
 - Model abstraction / adapters
 - Environment abstraction

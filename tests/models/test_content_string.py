@@ -1,6 +1,6 @@
 import pytest
 
-from minisweagent.models.utils.content_string import get_content_string
+from arkui_ut_agent.models.utils.content_string import get_content_string
 
 
 class TestGetContentString:

@@ -51,7 +51,7 @@ def run_mini_command(extra_options: list[str]) -> subprocess.CompletedProcess:
     cmd = [
         sys.executable,
         "-m",
-        "minisweagent",
+        "arkui_ut_agent",
         "--exit-immediately",
         "-y",
         "--cost-limit",

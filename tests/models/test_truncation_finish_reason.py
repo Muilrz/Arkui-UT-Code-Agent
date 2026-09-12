@@ -5,10 +5,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from minisweagent.exceptions import FormatError
-from minisweagent.models.utils.actions_text import parse_regex_actions
-from minisweagent.models.utils.actions_toolcall import parse_toolcall_actions
-from minisweagent.models.utils.actions_toolcall_response import (
+from arkui_ut_agent.exceptions import FormatError
+from arkui_ut_agent.models.utils.actions_text import parse_regex_actions
+from arkui_ut_agent.models.utils.actions_toolcall import parse_toolcall_actions
+from arkui_ut_agent.models.utils.actions_toolcall_response import (
     finish_reason_from_responses_api,
     parse_toolcall_actions_response,
 )

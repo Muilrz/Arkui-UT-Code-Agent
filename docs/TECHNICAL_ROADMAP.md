@@ -2,7 +2,7 @@
 
 ## 1. 目标
 
-把 `mini-swe-agent` 的简单线性 Action Loop 演进为一个面向 ArkUI/Ace Engine 的、Evidence-driven 的 UT Code Agent。
+把 `arkui-ut-code-agent` 的简单线性 Action Loop 演进为一个面向 ArkUI/Ace Engine 的、Evidence-driven 的 UT Code Agent。
 
 工程投入优先放在：
 
@@ -22,7 +22,7 @@ Trace / Evaluation
 
 ```text
 CLI / Config / Environment / Model
-        ↑ 复用 mini-swe-agent
+        ↑ 复用 arkui-ut-code-agent
 
 Agent Control Plane
 ├── AgentState
@@ -105,7 +105,7 @@ https://github.com/mpsm/mcp-cpp
 
 ### 目标
 
-- fork/import `mini-swe-agent`；
+- fork/import `arkui-ut-code-agent`；
 - 确认哪些 upstream 模块直接复用；
 - 建立项目自主模块边界；
 - 保留可运行的 baseline agent；

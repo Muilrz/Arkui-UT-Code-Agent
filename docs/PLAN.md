@@ -22,7 +22,7 @@
 
 ## Milestone 0 — Repository Baseline
 
-- [ ] Fork/import `mini-swe-agent`。
+- [ ] Fork/import `arkui-ut-code-agent`。
 - [ ] Pin upstream baseline revision。
 - [ ] 识别可直接复用的 upstream modules。
 - [ ] 建立 project-owned package/module 边界。

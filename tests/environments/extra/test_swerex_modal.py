@@ -2,11 +2,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from minisweagent.environments.extra.swerex_modal import (
+from arkui_ut_agent.environments.extra.swerex_modal import (
     SwerexModalEnvironment,
     SwerexModalEnvironmentConfig,
 )
-from minisweagent.exceptions import Submitted
+from arkui_ut_agent.exceptions import Submitted
 
 
 def _make_env(**kwargs):
