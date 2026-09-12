@@ -1,0 +1,39 @@
+name: Baseline CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  baseline:
+    name: ${{ matrix.os }} / Python 3.11
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test tools
+        run: python -m pip install pytest pytest-asyncio ruff
+
+      - name: Install project
+        run: python -m pip install -e .
+
+      - name: Run Ruff
+        run: ruff check src tests
+
+      - name: Run tests
+        run: pytest -q
