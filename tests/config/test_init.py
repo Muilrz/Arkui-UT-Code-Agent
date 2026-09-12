@@ -137,3 +137,13 @@ _ALL_BUILTIN_CONFIGS = list(builtin_config_dir.rglob("*.yaml"))
 def test_all_builtin_configs_findable_by_name(yaml_file):
     """All builtin YAML configs should be findable by their stem name."""
     assert get_config_path(yaml_file.stem) == yaml_file
+
+
+@pytest.mark.parametrize("config_name", ["default", "mini"])
+def test_builtin_agent_prompt_declares_runtime_shell(config_name):
+    config = get_config_from_spec(config_name)
+    prompt = config["agent"]["system_template"] + config["agent"]["instance_template"]
+
+    assert "{{shell_dialect}}" in prompt
+    assert "{{os_name}}" in prompt
+    assert "PowerShell" in prompt

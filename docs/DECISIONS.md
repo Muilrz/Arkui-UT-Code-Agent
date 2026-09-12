@@ -161,3 +161,15 @@ SemanticProvider
 **Decision：** 精确 clangd 语义依赖有效 compilation database。项目可以检测、配置或调用现有 ArkUI/GN 工具获得 `compile_commands.json`，但不建设自己的编译命令推断、持久索引或 Repository Intelligence Pipeline。
 
 **Reason：** compilation database 是 clangd 的环境输入，不应成为扩大项目边界的理由。
+
+---
+
+## D-013 — Local Runtime 使用显式的跨平台 Shell Backend
+
+**Status：accepted**
+
+**Decision：** `LocalEnvironment` 通过 shell backend 执行命令。Windows 默认 PowerShell；Linux/macOS 默认 Bash，
+Bash 不可用时回退 POSIX sh。Agent prompt 接收 OS、backend 和 dialect 信息，runtime 不做命令字符串自动翻译。
+
+**Reason：** shell 语法属于执行环境契约。显式 backend 能统一 cwd、env、输出、返回码和 timeout 行为，同时避免
+依赖 `shell=True` 的平台隐式选择，也避免不可靠的 Bash→PowerShell 文本改写。

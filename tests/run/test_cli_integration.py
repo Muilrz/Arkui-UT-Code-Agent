@@ -536,6 +536,9 @@ def test_output_file_is_created(tmp_path):
             "release": "1.0",
             "version": "1.0.0",
             "machine": "x86_64",
+            "os_name": "TestOS",
+            "shell_name": "test-shell",
+            "shell_dialect": "test-shell",
         }
         mock_environment.serialize.return_value = {
             "info": {"config": {"environment": {}, "environment_type": "MockEnvironment"}}

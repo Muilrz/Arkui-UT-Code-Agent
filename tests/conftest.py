@@ -1,19 +1,9 @@
 import json
 import re
-import sys
 import threading
 from pathlib import Path
 
 import pytest
-
-if sys.platform == "win32":
-    from prompt_toolkit.application.current import get_app_session
-    from prompt_toolkit.output import DummyOutput
-
-    # pytest's captured streams are not Win32 console handles.  Give
-    # prompt_toolkit a non-interactive output before prompt sessions are
-    # constructed during test collection.
-    get_app_session()._output = DummyOutput()  # noqa: SLF001
 
 from arkui_ut_agent.models import GLOBAL_MODEL_STATS
 
@@ -41,12 +31,12 @@ def reset_global_stats():
     """
     with _global_stats_lock:
         # Reset at start
-        GLOBAL_MODEL_STATS._cost = 0.0  # noqa: protected-access
-        GLOBAL_MODEL_STATS._n_calls = 0  # noqa: protected-access
+        GLOBAL_MODEL_STATS._cost = 0.0  # noqa: SLF001
+        GLOBAL_MODEL_STATS._n_calls = 0  # noqa: SLF001
         yield
         # Reset at end to clean up
-        GLOBAL_MODEL_STATS._cost = 0.0  # noqa: protected-access
-        GLOBAL_MODEL_STATS._n_calls = 0  # noqa: protected-access
+        GLOBAL_MODEL_STATS._cost = 0.0  # noqa: SLF001
+        GLOBAL_MODEL_STATS._n_calls = 0  # noqa: SLF001
 
 
 def get_test_data(trajectory_name: str) -> dict[str, list[str]]:

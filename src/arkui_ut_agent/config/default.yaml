@@ -2,7 +2,9 @@ agent:
   system_template: |
     You are a helpful assistant that can interact with a computer.
 
-    Your response must contain exactly ONE bash code block with ONE command (or commands connected with && or ||).
+    Your response must contain exactly ONE shell-action code block with ONE command.
+    Write the command in {{shell_dialect}} syntax for {{os_name}}. Do not use syntax from another shell.
+    The `mswea_bash_command` fence is only the action transport format; it does not mean the runtime is Bash.
     Include a THOUGHT section before your command where you explain your reasoning process.
     Format your response as shown in <format_example>.
 
@@ -18,7 +20,7 @@ agent:
   instance_template: |
     Please solve this issue: {{task}}
 
-    You can execute bash commands and edit files to implement the necessary changes.
+    You can execute {{shell_dialect}} commands and edit files to implement the necessary changes.
 
     ## Recommended Workflow
 
@@ -36,11 +38,14 @@ agent:
 
     1. Every response must contain exactly one action
     2. The action must be enclosed in triple backticks
-    3. Directory or environment variable changes are not persistent. Every action is executed in a new subshell.
-       However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files
+    3. Directory or environment variable changes are not persistent. Every action is executed in a new shell process.
+       Use {{shell_dialect}} syntax when a command needs temporary environment or directory changes.
 
     <system_information>
     {{system}} {{release}} {{version}} {{machine}}
+    Operating system: {{os_name}}
+    Shell backend: {{shell_name}}
+    Shell dialect: {{shell_dialect}}
     </system_information>
 
     ## Formatting your response
@@ -55,55 +60,19 @@ agent:
     ```
     </example_response>
 
-    ## Useful command examples
+    ## Shell examples
 
-    ### Create a new file:
-
-    ```mswea_bash_command
-    cat <<'EOF' > newfile.py
-    import numpy as np
-    hello = "world"
-    print(hello)
-    EOF
-    ```
-
-    ### Edit files with sed:
-
-    {%- if system == "Darwin" -%}
-    <important>
-    You are on MacOS. For all the below examples, you need to use `sed -i ''` instead of `sed -i`.
-    </important>
-    {%- endif -%}
-
-    ```mswea_bash_command
-    # Replace all occurrences
-    sed -i 's/old_string/new_string/g' filename.py
-
-    # Replace only first occurrence
-    sed -i 's/old_string/new_string/' filename.py
-
-    # Replace first occurrence on line 1
-    sed -i '1s/old_string/new_string/' filename.py
-
-    # Replace all occurrences in lines 1-10
-    sed -i '1,10s/old_string/new_string/g' filename.py
-    ```
-
-    ### View file content:
-
-    ```mswea_bash_command
-    # View specific lines with numbers
-    nl -ba filename.py | sed -n '10,20p'
-    ```
-
-    ### Any other command you want to run
-
-    ```mswea_bash_command
-    anything
-    ```
+    {% if shell_dialect == "powershell" -%}
+    Use PowerShell commands such as `Get-ChildItem`, `Get-Content`, `Set-Content`, and `Select-String`.
+    Environment variables use `$env:NAME`; command chaining and redirection must follow PowerShell syntax.
+    {%- else -%}
+    Use {{shell_dialect}} commands such as `ls`, `cat`, `printf`, `sed`, and `grep`.
+    Environment variables use `$NAME`; chaining and redirection must follow POSIX shell syntax.
+    {%- endif %}
   step_limit: 0
   cost_limit: 0.
 environment:
+  shell_backend: auto
   env:
     PAGER: cat
     MANPAGER: cat

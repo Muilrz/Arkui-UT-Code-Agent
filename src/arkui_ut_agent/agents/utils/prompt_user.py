@@ -5,8 +5,23 @@ from prompt_toolkit.shortcuts import PromptSession
 from arkui_ut_agent import global_config_dir
 
 _history = FileHistory(global_config_dir / "interactive_history.txt")
-prompt_session = PromptSession(history=_history)
-_multiline_prompt_session = PromptSession(history=_history, multiline=True)
+
+
+class _LazyPromptSession:
+    """Create prompt_toolkit sessions only when interactive input is requested."""
+
+    def __init__(self, *, multiline: bool = False):
+        self.multiline = multiline
+        self._session: PromptSession | None = None
+
+    def prompt(self, *args, **kwargs) -> str:
+        if self._session is None:
+            self._session = PromptSession(history=_history, multiline=self.multiline)
+        return self._session.prompt(*args, **kwargs)
+
+
+prompt_session = _LazyPromptSession()
+_multiline_prompt_session = _LazyPromptSession(multiline=True)
 
 
 def _multiline_prompt() -> str:

@@ -72,6 +72,19 @@ blocking_issue
 stop/retry state
 ```
 
+### 3.1 Local Runtime Shell Contract
+
+Local runtime 必须通过 shell backend 隔离平台差异：
+
+- Windows 默认使用 PowerShell；
+- Linux/macOS 默认使用 Bash，Bash 不可用时使用 POSIX sh；
+- Agent 只提交 shell action，不直接依赖具体 backend；
+- runtime 不进行 Bash 与 PowerShell 命令字符串自动翻译；
+- prompt context 必须提供当前 operating system、shell backend 和 shell dialect。
+
+跨平台公共契约包括 cwd、environment、stdout/stderr、return code、timeout、pipe、redirect 和文件操作。
+process group、signal、process-tree termination 等平台能力由各 backend 独立实现和验证。
+
 ## 4. Memory Architecture
 
 Memory 是任务执行记忆，不是 Repository Knowledge Database。

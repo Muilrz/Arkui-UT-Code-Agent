@@ -14,35 +14,22 @@ Codex 每次开始开发时应优先读取本文件，但长期边界仍以 `SPE
 
 ## 2. Current Objective
 
-**基于选定的 `arkui-ut-code-agent` baseline 建立可运行仓库，并确认项目模块边界；不要过早实现复杂 Agent 功能。**
+**保持 baseline runtime 在 Windows 与 POSIX 上具有明确、可验证的 shell 执行契约。**
 
-当前目标是先获得一个干净、可验证的 baseline，然后进入第一个真正开发 Slice：
+当前已完成的 runtime slice：
 
 ```text
-ToolResult
-+ Observation
-+ Tool Registry
+LocalEnvironment
+→ native ShellBackend
+→ PowerShell (Windows) / Bash or sh (POSIX)
 ```
 
 ## 3. 当前 In Scope
 
-1. Fork/import 并 pin `arkui-ut-code-agent` baseline。
-2. 阅读真实 upstream package/module 结构。
-3. 标记 reused vs project-owned modules。
-4. 建立初始 package layout，至少覆盖：
-   - control plane；
-   - memory/context；
-   - retrieval/tools；
-   - semantic provider；
-   - task graph；
-   - UT workflow；
-   - trace/evaluation。
-5. 保留一套 runnable baseline config，供后续 ablation。
-6. 确认项目正常 install/test/lint/type/smoke 命令。
-7. 在文档/配置层确认 Semantic 边界：
-   - external clangd MCP；
-   - local `SemanticProvider` adapter；
-   - 不实现 MCP Server。
+1. 显式 PowerShell/POSIX shell backend。
+2. OS 与 shell dialect 进入 Agent prompt context。
+3. 跨平台 LocalEnvironment 公共能力测试。
+4. prompt_toolkit session 惰性创建，不在 import/collection 时要求真实 TTY。
 
 ## 4. 当前 Out of Scope
 
@@ -59,43 +46,40 @@ ToolResult
 
 ## 5. Expected Deliverables
 
-- runnable baseline repository；
-- upstream revision 已 pin；
-- reused vs project-owned module boundary；
-- 初始 package/directory skeleton；
-- 一条正常 developer verification path；
-- 下一 Slice 确认：`ToolResult + Observation + Tool Registry`。
+- `ShellBackend` compatibility boundary；
+- Windows PowerShell backend；
+- Linux/macOS Bash/sh backend；
+- runtime shell metadata in prompt context；
+- platform-aware LocalEnvironment tests；
+- non-TTY-safe prompt input initialization。
 
 ## 6. Verification
 
-仓库 baseline 建立后，把真实命令写在这里：
+2026-09-13 Windows 验证结果：
 
 ```text
-TODO: baseline install command
-TODO: baseline unit-test command
-TODO: lint/type command（如 upstream 有）
-TODO: minimal CLI smoke-test command
+pytest -q
+→ 396 passed, 3 skipped, 0 failed, 0 errors
+
+ruff check src tests
+→ passed
 ```
+
+仍需在 Linux/macOS CI 或实际环境验证 Bash/sh selection、POSIX process-group timeout cleanup 及平台路径行为。
 
 在这些命令真实执行成功，或写明具体 Blocker 前，不得把本任务标为完成。
 
 ## 7. Known Blockers / Unknowns
 
-当前待确认：
-
-- `arkui-ut-code-agent` 最终 pin 的 revision；
-- 目标环境里 ArkUI KB 的真实调用接口/命令；
-- ArkUI/Ace Engine 环境中 `compile_commands.json` 的稳定获取方式；
-- Stage 6 集成时 `felipeerias/clangd-mcp-server` 的最终 pin revision 与真实 Tool schema。
-
-注意：后两项现在是**已知的后续集成前置问题**，但不阻塞 Milestone 0/1。
+当前 Windows 验证无 blocker。POSIX backend 的实现和测试契约已存在，但仍等待真实 Linux/macOS 环境验证。
 
 ## 8. Completion Checklist
 
-- [ ] upstream baseline 已 pin；
-- [ ] baseline 可运行；
-- [ ] reused vs project-owned modules 已记录；
-- [ ] 初始 package skeleton 已建立；
-- [ ] verification commands 已真实执行；
-- [ ] 未引入任何被 `SPEC.md` 禁止的 Repository Intelligence subsystem；
-- [ ] `PLAN.md` Milestone 0 可以标记为 `[x]`。
+- [x] Windows 默认 PowerShell；
+- [x] POSIX 默认 Bash/sh；
+- [x] 上层 Agent 不依赖具体 backend；
+- [x] prompt 明确 OS 与 shell dialect；
+- [x] runtime 不做命令字符串翻译；
+- [x] Windows pytest 0 failed / 0 errors；
+- [x] ruff passed；
+- [ ] Linux/macOS runtime verification。

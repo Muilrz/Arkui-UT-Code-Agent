@@ -10,6 +10,18 @@ from unittest.mock import patch
 import pytest
 
 from arkui_ut_agent.environments.local import LocalEnvironment, LocalEnvironmentConfig
+from arkui_ut_agent.environments.shell import (
+    PosixShellBackend,
+    PowerShellBackend,
+    get_shell_backend,
+)
+
+IS_WINDOWS = os.name == "nt"
+
+
+def native_command(*, powershell: str, posix: str) -> str:
+    """Select equivalent commands written in the native shell dialect."""
+    return powershell if IS_WINDOWS else posix
 
 
 def test_local_environment_config_defaults():
@@ -19,13 +31,44 @@ def test_local_environment_config_defaults():
     assert config.cwd == ""
     assert config.env == {}
     assert config.timeout == 30
+    assert config.shell_backend == "auto"
+
+
+def test_local_environment_uses_native_shell_backend():
+    env = LocalEnvironment()
+
+    assert env.backend.name == ("powershell" if IS_WINDOWS else "posix")
+
+
+def test_local_environment_exposes_shell_template_vars():
+    env = LocalEnvironment()
+
+    template_vars = env.get_template_vars()
+    assert template_vars["os_name"]
+    assert template_vars["shell_name"] == env.backend.name
+    assert template_vars["shell_dialect"] == env.backend.dialect
+    assert template_vars["shell_executable"] == env.backend.executable
+
+
+def test_shell_backend_command_argv_is_explicit():
+    powershell = PowerShellBackend("pwsh")
+    posix = PosixShellBackend("bash")
+
+    assert powershell.argv("Write-Output 'ok'")[-2:] == ["-Command", "Write-Output 'ok'"]
+    assert posix.argv("printf ok") == ["bash", "-lc", "printf ok"]
+
+
+def test_get_shell_backend_rejects_unknown_name():
+    with pytest.raises(ValueError, match="Unknown shell backend"):
+        get_shell_backend("unknown")  # type: ignore[arg-type]
 
 
 def test_local_environment_basic_execution():
     """Test basic command execution in local environment."""
     env = LocalEnvironment()
 
-    result = env.execute({"command": "echo 'hello world'"})
+    command = native_command(powershell="Write-Output 'hello world'", posix="printf '%s\\n' 'hello world'")
+    result = env.execute({"command": command})
     assert result["returncode"] == 0
     assert "hello world" in result["output"]
 
@@ -35,12 +78,17 @@ def test_local_environment_set_env_variables():
     env = LocalEnvironment(env={"TEST_VAR": "test_value", "ANOTHER_VAR": "another_value"})
 
     # Test single environment variable
-    result = env.execute({"command": "echo $TEST_VAR"})
+    command = native_command(powershell="Write-Output $env:TEST_VAR", posix="printf '%s\\n' \"$TEST_VAR\"")
+    result = env.execute({"command": command})
     assert result["returncode"] == 0
     assert "test_value" in result["output"]
 
     # Test multiple environment variables
-    result = env.execute({"command": "echo $TEST_VAR $ANOTHER_VAR"})
+    command = native_command(
+        powershell="Write-Output \"$env:TEST_VAR $env:ANOTHER_VAR\"",
+        posix="printf '%s %s\\n' \"$TEST_VAR\" \"$ANOTHER_VAR\"",
+    )
+    result = env.execute({"command": command})
     assert result["returncode"] == 0
     assert "test_value another_value" in result["output"]
 
@@ -51,7 +99,11 @@ def test_local_environment_existing_env_variables():
         env = LocalEnvironment(env={"NEW_VAR": "new_value"})
 
         # Test that both existing and new variables are available
-        result = env.execute({"command": "echo $EXISTING_VAR $NEW_VAR"})
+        command = native_command(
+            powershell="Write-Output \"$env:EXISTING_VAR $env:NEW_VAR\"",
+            posix="printf '%s %s\\n' \"$EXISTING_VAR\" \"$NEW_VAR\"",
+        )
+        result = env.execute({"command": command})
         assert result["returncode"] == 0
         assert "existing_value new_value" in result["output"]
 
@@ -61,7 +113,11 @@ def test_local_environment_env_variable_override():
     with patch.dict(os.environ, {"CONFLICT_VAR": "original_value"}):
         env = LocalEnvironment(env={"CONFLICT_VAR": "override_value"})
 
-        result = env.execute({"command": "echo $CONFLICT_VAR"})
+        command = native_command(
+            powershell="Write-Output $env:CONFLICT_VAR",
+            posix="printf '%s\\n' \"$CONFLICT_VAR\"",
+        )
+        result = env.execute({"command": command})
         assert result["returncode"] == 0
         assert "override_value" in result["output"]
 
@@ -71,7 +127,8 @@ def test_local_environment_custom_cwd():
     with tempfile.TemporaryDirectory() as temp_dir:
         env = LocalEnvironment(cwd=temp_dir)
 
-        result = env.execute({"command": "pwd"})
+        command = native_command(powershell="(Get-Location).Path", posix="pwd")
+        result = env.execute({"command": command})
         assert result["returncode"] == 0
         assert temp_dir in result["output"]
 
@@ -82,7 +139,8 @@ def test_local_environment_cwd_parameter_override():
         env = LocalEnvironment(cwd=temp_dir1)
 
         # Execute with different cwd parameter
-        result = env.execute({"command": "pwd"}, cwd=temp_dir2)
+        command = native_command(powershell="(Get-Location).Path", posix="pwd")
+        result = env.execute({"command": command}, cwd=temp_dir2)
         assert result["returncode"] == 0
         assert temp_dir2 in result["output"]
 
@@ -92,7 +150,8 @@ def test_local_environment_default_cwd():
     env = LocalEnvironment()
     current_dir = os.getcwd()
 
-    result = env.execute({"command": "pwd"})
+    command = native_command(powershell="(Get-Location).Path", posix="pwd")
+    result = env.execute({"command": command})
     assert result["returncode"] == 0
     assert current_dir in result["output"]
 
@@ -119,7 +178,11 @@ def test_local_environment_stderr_capture():
     """Test that stderr is properly captured."""
     env = LocalEnvironment()
 
-    result = env.execute({"command": "echo 'error message' >&2"})
+    command = native_command(
+        powershell="[Console]::Error.WriteLine('error message')",
+        posix="printf '%s\\n' 'error message' >&2",
+    )
+    result = env.execute({"command": command})
     assert result["returncode"] == 0
     assert "error message" in result["output"]
 
@@ -128,7 +191,8 @@ def test_local_environment_timeout():
     """Test timeout functionality returns structured output instead of raising."""
     env = LocalEnvironment(timeout=1)
 
-    result = env.execute({"command": "sleep 2"})
+    command = native_command(powershell="Start-Sleep -Seconds 2", posix="sleep 2")
+    result = env.execute({"command": command})
     assert result["returncode"] == -1
     assert "timed out" in result["exception_info"]
     assert result["extra"]["exception_type"] == "TimeoutExpired"
@@ -203,7 +267,7 @@ def test_local_environment_custom_timeout():
 @pytest.mark.parametrize(
     ("command", "expected_returncode"),
     [
-        ("echo 'test'", 0),
+        (native_command(powershell="Write-Output 'test'", posix="printf test"), 0),
         ("exit 1", 1),
         ("exit 42", 42),
     ],
@@ -220,7 +284,11 @@ def test_local_environment_multiline_output():
     """Test handling of multiline command output."""
     env = LocalEnvironment()
 
-    result = env.execute({"command": "echo -e 'line1\\nline2\\nline3'"})
+    command = native_command(
+        powershell="Write-Output 'line1','line2','line3'",
+        posix="printf 'line1\\nline2\\nline3\\n'",
+    )
+    result = env.execute({"command": command})
     assert result["returncode"] == 0
     output_lines = result["output"].strip().split("\n")
     assert len(output_lines) == 3
@@ -235,11 +303,16 @@ def test_local_environment_file_operations():
         env = LocalEnvironment(cwd=temp_dir)
 
         # Create a file
-        result = env.execute({"command": "echo 'test content' > test.txt"})
+        write_command = native_command(
+            powershell="Set-Content -LiteralPath test.txt -Value 'test content'",
+            posix="printf '%s\\n' 'test content' > test.txt",
+        )
+        result = env.execute({"command": write_command})
         assert result["returncode"] == 0
 
         # Read the file
-        result = env.execute({"command": "cat test.txt"})
+        read_command = native_command(powershell="Get-Content -LiteralPath test.txt", posix="cat test.txt")
+        result = env.execute({"command": read_command})
         assert result["returncode"] == 0
         assert "test content" in result["output"]
 
@@ -254,11 +327,19 @@ def test_local_environment_shell_features():
     env = LocalEnvironment()
 
     # Test pipe
-    result = env.execute({"command": "echo 'hello world' | grep 'world'"})
+    pipe_command = native_command(
+        powershell="Write-Output 'hello world' | Select-String -SimpleMatch 'world'",
+        posix="printf '%s\\n' 'hello world' | grep 'world'",
+    )
+    result = env.execute({"command": pipe_command})
     assert result["returncode"] == 0
     assert "hello world" in result["output"]
 
     # Test command substitution
-    result = env.execute({"command": "echo $(echo 'nested')"})
+    nested_command = native_command(
+        powershell="Write-Output (Write-Output 'nested')",
+        posix="printf '%s\\n' \"$(printf nested)\"",
+    )
+    result = env.execute({"command": nested_command})
     assert result["returncode"] == 0
     assert "nested" in result["output"]
