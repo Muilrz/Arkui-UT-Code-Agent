@@ -186,3 +186,12 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
+# ArkUI UT Code Agent generated files
+compile_commands.json
+.cache/clangd/
+traces/
+outputs/
+logs/
+.idea/
+.DS_Store
+
