@@ -24,6 +24,13 @@ def native_command(*, powershell: str, posix: str) -> str:
     return powershell if IS_WINDOWS else posix
 
 
+def assert_same_path(expected: str | Path, shell_output: str) -> None:
+    """Compare filesystem identity instead of platform-dependent path spelling."""
+    actual = Path(shell_output.strip())
+    assert actual.exists()
+    assert actual.samefile(expected)
+
+
 def test_local_environment_config_defaults():
     """Test that LocalEnvironmentConfig has correct default values."""
     config = LocalEnvironmentConfig()
@@ -130,7 +137,7 @@ def test_local_environment_custom_cwd():
         command = native_command(powershell="(Get-Location).Path", posix="pwd")
         result = env.execute({"command": command})
         assert result["returncode"] == 0
-        assert temp_dir in result["output"]
+        assert_same_path(temp_dir, result["output"])
 
 
 def test_local_environment_cwd_parameter_override():
@@ -142,7 +149,7 @@ def test_local_environment_cwd_parameter_override():
         command = native_command(powershell="(Get-Location).Path", posix="pwd")
         result = env.execute({"command": command}, cwd=temp_dir2)
         assert result["returncode"] == 0
-        assert temp_dir2 in result["output"]
+        assert_same_path(temp_dir2, result["output"])
 
 
 def test_local_environment_default_cwd():
@@ -153,7 +160,7 @@ def test_local_environment_default_cwd():
     command = native_command(powershell="(Get-Location).Path", posix="pwd")
     result = env.execute({"command": command})
     assert result["returncode"] == 0
-    assert current_dir in result["output"]
+    assert_same_path(current_dir, result["output"])
 
 
 def test_local_environment_command_failure():
@@ -328,12 +335,12 @@ def test_local_environment_shell_features():
 
     # Test pipe
     pipe_command = native_command(
-        powershell="Write-Output 'hello world' | Select-String -SimpleMatch 'world'",
-        posix="printf '%s\\n' 'hello world' | grep 'world'",
+        powershell="Write-Output 'hello world' | ForEach-Object { $_.ToUpperInvariant() }",
+        posix="printf '%s\\n' 'hello world' | tr '[:lower:]' '[:upper:]'",
     )
     result = env.execute({"command": pipe_command})
     assert result["returncode"] == 0
-    assert "hello world" in result["output"]
+    assert result["output"].strip() == "HELLO WORLD"
 
     # Test command substitution
     nested_command = native_command(
