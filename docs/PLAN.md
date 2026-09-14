@@ -38,8 +38,8 @@
 - [x] 定义 `Observation`。
 - [x] 定义 provenance model。
 - [x] 建立 Tool Registry / dispatch。
-- [ ] 实现 `rg_search` / `read_file` / `list_files`。
-- [ ] 实现 `git_diff` / `git_status`。
+- [x] 实现 `rg_search` / `read_file` / `list_files`。
+- [x] 实现 `git_diff` / `git_status`。
 - [ ] 实现 `apply_patch` / `write_file`。
 - [ ] 实现 `run_command` / `build` / `test`。
 - [ ] 封装基础 `kb_search`。

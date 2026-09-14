@@ -14,25 +14,27 @@ Codex 每次开始开发时应优先读取本文件，但长期边界仍以 `SPE
 
 ## 2. Current Objective
 
-**Stage 1A：Tool Contract 基础层已完成。**
+**Stage 1B：Repository Read Tools 已完成。**
 
-已定义所有后续 Tool 共用的结果、观测、来源与诊断模型，并提供可预测的 Tool Registry / dispatch 行为。
+已基于 Stage 1A 的统一契约，实现当前 checkout 的只读源码与 Git 事实查询。
 
-下一 Slice 为 Stage 1B 具体 Tool 实现，尚未开始。
+后续 Stage 1 Slice 尚未开始。
 
 ## 3. 当前 In Scope
 
-1. `ToolResult`。
-2. `Observation` 与 `ToolResult → Observation` normalization。
-3. provenance / diagnostic 基础模型。
-4. Tool Registry、注册与 dispatch。
-5. success/failure normalization、provenance 保留、重复/未知 Tool、Tool 执行异常的 deterministic unit tests。
+1. `rg_search`。
+2. `read_file`。
+3. `list_files`。
+4. `git_diff`。
+5. `git_status`。
+6. Repository Tool 注册与 dispatch 后的 `Observation` normalization。
+7. 主要成功/失败路径的 deterministic unit tests。
 
 ## 4. 当前 Out of Scope
 
 本 Slice 不实现：
 
-- Repository / Editing / Execution / ArkUI KB 具体 Tool；
+- Editing / Execution / ArkUI KB Tool；
 - Memory / Context Builder；
 - Planner / Replanner / Diagnose / Stop Policy；
 - RetrievalRouter；
@@ -43,22 +45,23 @@ Codex 每次开始开发时应优先读取本文件，但长期边界仍以 `SPE
 
 ## 5. Expected Deliverables
 
-- 稳定且可序列化的 Tool result / observation 基础模型；
-- 保留 provenance 与 diagnostics 的 normalization；
-- 拒绝重复名称、标准化未知 Tool 与执行异常的 Tool Registry；
-- 对成功路径和失败路径的 deterministic unit tests。
+- Windows / POSIX 兼容的 Repository Read Tool wrappers；
+- 所有结果使用 `ToolResult`，经 Registry dispatch 后生成 `Observation`；
+- 正常失败返回结构化 diagnostics 与 provenance；
+- 对文件、搜索、Git 成功/失败行为的 deterministic unit tests。
 
 ## 6. Verification
 
-Baseline 已在 Windows 与 Ubuntu CI 通过。
-
-2026-09-14 Windows Stage 1A 验证结果：
+2026-09-14 Windows Stage 1B 验证结果：
 
 ```text
 py -m pytest -q
-→ 408 passed, 3 skipped, 1 warning, 0 failed, 0 errors
+→ 430 passed, 3 skipped, 1 warning, 0 failed, 0 errors
 
 py -m ruff check src tests
+→ passed
+
+git diff --check
 → passed
 ```
 
@@ -70,12 +73,13 @@ warning 为既有 `last_n_messages_offset` deprecation warning，与本 Slice �
 
 ## 8. Completion Checklist
 
-- [x] `ToolResult` / `Observation` 已实现；
-- [x] provenance / diagnostic 基础模型已实现；
-- [x] Tool Registry / dispatch 已实现；
-- [x] success/failure normalization 已测试；
-- [x] provenance 保留已测试；
-- [x] 重复/未知 Tool 已测试；
-- [x] Tool 执行异常标准化已测试；
+- [x] `rg_search` 已实现并测试；
+- [x] `read_file` 已实现并测试；
+- [x] `list_files` 已实现并测试；
+- [x] `git_diff` 已实现并测试；
+- [x] `git_status` 已实现并测试；
+- [x] Repository Tool 注册与 normalization 已测试；
+- [x] Windows / POSIX 路径与进程调用保持兼容；
 - [x] pytest passed；
-- [x] ruff passed。
+- [x] ruff passed；
+- [x] git diff --check passed。
