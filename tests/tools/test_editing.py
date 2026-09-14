@@ -164,6 +164,18 @@ class TestApplyPatch:
         assert result.diagnostics[0].details == {"occurrences": 2}
         assert target.read_text(encoding="utf-8") == "same\nsame\n"
 
+    def test_overlapping_targets_are_a_conflict_and_do_not_modify_file(self, repository):
+        target = repository / "sample.cc"
+        target.write_text("aaa", encoding="utf-8")
+
+        result = EditingTools(repository).apply_patch(
+            {"path": "sample.cc", "old_text": "aa", "new_text": "changed"}
+        )
+
+        assert_failure(result, "patch_conflict", "apply_patch", "sample.cc")
+        assert result.diagnostics[0].details == {"occurrences": 2}
+        assert target.read_text(encoding="utf-8") == "aaa"
+
     def test_missing_target_file_is_structured(self, repository):
         result = EditingTools(repository).apply_patch(
             {"path": "missing.cc", "old_text": "before", "new_text": "after"}

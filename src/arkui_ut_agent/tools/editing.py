@@ -175,8 +175,8 @@ class EditingTools:
         if isinstance(content, ToolResult):
             return content
 
-        occurrences = content.count(old_text)
-        if occurrences == 0:
+        first_index = content.find(old_text)
+        if first_index < 0:
             return _failure(
                 tool_name,
                 "patch_target_not_found",
@@ -184,13 +184,13 @@ class EditingTools:
                 location=location,
                 details={"occurrences": 0},
             )
-        if occurrences > 1:
+        if content.find(old_text, first_index + 1) >= 0:
             return _failure(
                 tool_name,
                 "patch_conflict",
                 "The exact 'old_text' fragment is not unique.",
                 location=location,
-                details={"occurrences": occurrences},
+                details={"occurrences": 2},
             )
 
         updated_content = content.replace(old_text, new_text, 1)
