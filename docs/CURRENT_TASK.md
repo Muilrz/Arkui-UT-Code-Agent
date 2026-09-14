@@ -14,27 +14,25 @@ Codex 每次开始开发时应优先读取本文件，但长期边界仍以 `SPE
 
 ## 2. Current Objective
 
-**Stage 1B：Repository Read Tools 已完成。**
+**Stage 1C：Editing Tools 已完成。**
 
-已基于 Stage 1A 的统一契约，实现当前 checkout 的只读源码与 Git 事实查询。
+已基于 Stage 1A/1B 的统一契约和 repository-root 边界，实现确定性的文本写入与精确补丁修改。
 
 后续 Stage 1 Slice 尚未开始。
 
 ## 3. 当前 In Scope
 
-1. `rg_search`。
-2. `read_file`。
-3. `list_files`。
-4. `git_diff`。
-5. `git_status`。
-6. Repository Tool 注册与 dispatch 后的 `Observation` normalization。
-7. 主要成功/失败路径的 deterministic unit tests。
+1. `write_file` 创建或覆写 UTF-8 文本文件。
+2. `apply_patch` 对唯一精确匹配执行文本替换。
+3. repository-root、相对路径及 symlink 安全边界。
+4. Editing Tool 原子注册与 dispatch normalization。
+5. 主要成功/失败路径的 deterministic unit tests。
 
 ## 4. 当前 Out of Scope
 
 本 Slice 不实现：
 
-- Editing / Execution / ArkUI KB Tool；
+- Execution / ArkUI KB Tool；
 - Memory / Context Builder；
 - Planner / Replanner / Diagnose / Stop Policy；
 - RetrievalRouter；
@@ -45,18 +43,18 @@ Codex 每次开始开发时应优先读取本文件，但长期边界仍以 `SPE
 
 ## 5. Expected Deliverables
 
-- Windows / POSIX 兼容的 Repository Read Tool wrappers；
-- 所有结果使用 `ToolResult`，经 Registry dispatch 后生成 `Observation`；
-- 正常失败返回结构化 diagnostics 与 provenance；
-- 对文件、搜索、Git 成功/失败行为的 deterministic unit tests。
+- Windows / POSIX 兼容的 Editing Tool wrappers；
+- 明确且可测试的父目录创建与覆写行为；
+- 越界、冲突、编码和 IO 失败返回结构化 diagnostics 与 provenance；
+- 成功结果包含文件级修改信息，并经 Registry dispatch 归一化为 `Observation`。
 
 ## 6. Verification
 
-2026-09-14 Windows Stage 1B 验证结果：
+2026-09-14 Windows Stage 1C 验证结果：
 
 ```text
 py -m pytest -q
-→ 430 passed, 3 skipped, 1 warning, 0 failed, 0 errors
+→ 464 passed, 3 skipped, 1 warning, 0 failed, 0 errors
 
 py -m ruff check src tests
 → passed
@@ -73,13 +71,12 @@ warning 为既有 `last_n_messages_offset` deprecation warning，与本 Slice �
 
 ## 8. Completion Checklist
 
-- [x] `rg_search` 已实现并测试；
-- [x] `read_file` 已实现并测试；
-- [x] `list_files` 已实现并测试；
-- [x] `git_diff` 已实现并测试；
-- [x] `git_status` 已实现并测试；
-- [x] Repository Tool 注册与 normalization 已测试；
-- [x] Windows / POSIX 路径与进程调用保持兼容；
+- [x] `write_file` create / overwrite 已实现并测试；
+- [x] `apply_patch` success / mismatch / conflict 已实现并测试；
+- [x] repository 越界与 symlink 越界已阻止并测试；
+- [x] 非法参数、编码与 IO failure 已结构化并测试；
+- [x] Editing Tool 原子注册与 dispatch normalization 已测试；
+- [x] Windows / POSIX 文件内容与路径行为保持兼容；
 - [x] pytest passed；
 - [x] ruff passed；
 - [x] git diff --check passed。

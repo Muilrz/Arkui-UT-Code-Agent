@@ -40,7 +40,7 @@
 - [x] 建立 Tool Registry / dispatch。
 - [x] 实现 `rg_search` / `read_file` / `list_files`。
 - [x] 实现 `git_diff` / `git_status`。
-- [ ] 实现 `apply_patch` / `write_file`。
+- [x] 实现 `apply_patch` / `write_file`。
 - [ ] 实现 `run_command` / `build` / `test`。
 - [ ] 封装基础 `kb_search`。
 - [x] 添加 success/failure normalization tests。
