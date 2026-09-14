@@ -42,7 +42,7 @@
 - [x] 实现 `git_diff` / `git_status`。
 - [x] 实现 `apply_patch` / `write_file`。
 - [x] 实现 `run_command` / `build` / `test`。
-- [ ] 封装基础 `kb_search`。
+- [x] 封装基础 `kb_search`。
 - [x] 添加 success/failure normalization tests。
 
 **Acceptance：** 所有 Tool 都通过统一结果模型进入 Observation，失败不会绕过 Agent 状态机。
