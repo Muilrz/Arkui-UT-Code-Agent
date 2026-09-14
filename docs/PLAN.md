@@ -34,16 +34,16 @@
 
 ## Milestone 1 — ToolResult / Observation / Tool Registry
 
-- [ ] 定义 `ToolResult`。
-- [ ] 定义 `Observation`。
-- [ ] 定义 provenance model。
-- [ ] 建立 Tool Registry / dispatch。
+- [x] 定义 `ToolResult`。
+- [x] 定义 `Observation`。
+- [x] 定义 provenance model。
+- [x] 建立 Tool Registry / dispatch。
 - [ ] 实现 `rg_search` / `read_file` / `list_files`。
 - [ ] 实现 `git_diff` / `git_status`。
 - [ ] 实现 `apply_patch` / `write_file`。
 - [ ] 实现 `run_command` / `build` / `test`。
 - [ ] 封装基础 `kb_search`。
-- [ ] 添加 success/failure normalization tests。
+- [x] 添加 success/failure normalization tests。
 
 **Acceptance：** 所有 Tool 都通过统一结果模型进入 Observation，失败不会绕过 Agent 状态机。
 

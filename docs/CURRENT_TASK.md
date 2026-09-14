@@ -14,72 +14,68 @@ Codex 每次开始开发时应优先读取本文件，但长期边界仍以 `SPE
 
 ## 2. Current Objective
 
-**保持 baseline runtime 在 Windows 与 POSIX 上具有明确、可验证的 shell 执行契约。**
+**Stage 1A：Tool Contract 基础层已完成。**
 
-当前已完成的 runtime slice：
+已定义所有后续 Tool 共用的结果、观测、来源与诊断模型，并提供可预测的 Tool Registry / dispatch 行为。
 
-```text
-LocalEnvironment
-→ native ShellBackend
-→ PowerShell (Windows) / Bash or sh (POSIX)
-```
+下一 Slice 为 Stage 1B 具体 Tool 实现，尚未开始。
 
 ## 3. 当前 In Scope
 
-1. 显式 PowerShell/POSIX shell backend。
-2. OS 与 shell dialect 进入 Agent prompt context。
-3. 跨平台 LocalEnvironment 公共能力测试。
-4. prompt_toolkit session 惰性创建，不在 import/collection 时要求真实 TTY。
+1. `ToolResult`。
+2. `Observation` 与 `ToolResult → Observation` normalization。
+3. provenance / diagnostic 基础模型。
+4. Tool Registry、注册与 dispatch。
+5. success/failure normalization、provenance 保留、重复/未知 Tool、Tool 执行异常的 deterministic unit tests。
 
 ## 4. 当前 Out of Scope
 
-本 Slice 暂不实现：
+本 Slice 不实现：
 
-- Vector Retrieval / Repository Index；
-- Persistent Graph；
-- 完整 Planner/Replanner；
-- clangd MCP Server；
-- 成熟 Context Builder ranking；
-- 完整 ArkUI UT Repair Loop；
-- 完整 benchmark/evaluation suite；
-- Stage 6 的真实 clangd MCP 集成。
+- Repository / Editing / Execution / ArkUI KB 具体 Tool；
+- Memory / Context Builder；
+- Planner / Replanner / Diagnose / Stop Policy；
+- RetrievalRouter；
+- SemanticProvider / clangd MCP 集成；
+- Task Relation Graph；
+- ArkUI UT Workflow；
+- 新的 Repository Index、Persistent Graph 或跨任务知识系统。
 
 ## 5. Expected Deliverables
 
-- `ShellBackend` compatibility boundary；
-- Windows PowerShell backend；
-- Linux/macOS Bash/sh backend；
-- runtime shell metadata in prompt context；
-- platform-aware LocalEnvironment tests；
-- non-TTY-safe prompt input initialization。
+- 稳定且可序列化的 Tool result / observation 基础模型；
+- 保留 provenance 与 diagnostics 的 normalization；
+- 拒绝重复名称、标准化未知 Tool 与执行异常的 Tool Registry；
+- 对成功路径和失败路径的 deterministic unit tests。
 
 ## 6. Verification
 
-2026-09-13 Windows 验证结果：
+Baseline 已在 Windows 与 Ubuntu CI 通过。
+
+2026-09-14 Windows Stage 1A 验证结果：
 
 ```text
-pytest -q
-→ 396 passed, 3 skipped, 0 failed, 0 errors
+py -m pytest -q
+→ 408 passed, 3 skipped, 1 warning, 0 failed, 0 errors
 
-ruff check src tests
+py -m ruff check src tests
 → passed
 ```
 
-仍需在 Linux/macOS CI 或实际环境验证 Bash/sh selection、POSIX process-group timeout cleanup 及平台路径行为。
-
-在这些命令真实执行成功，或写明具体 Blocker 前，不得把本任务标为完成。
+warning 为既有 `last_n_messages_offset` deprecation warning，与本 Slice 无关。
 
 ## 7. Known Blockers / Unknowns
 
-当前 Windows 验证无 blocker。POSIX backend 的实现和测试契约已存在，但仍等待真实 Linux/macOS 环境验证。
+当前无已知 blocker。
 
 ## 8. Completion Checklist
 
-- [x] Windows 默认 PowerShell；
-- [x] POSIX 默认 Bash/sh；
-- [x] 上层 Agent 不依赖具体 backend；
-- [x] prompt 明确 OS 与 shell dialect；
-- [x] runtime 不做命令字符串翻译；
-- [x] Windows pytest 0 failed / 0 errors；
-- [x] ruff passed；
-- [ ] Linux/macOS runtime verification。
+- [x] `ToolResult` / `Observation` 已实现；
+- [x] provenance / diagnostic 基础模型已实现；
+- [x] Tool Registry / dispatch 已实现；
+- [x] success/failure normalization 已测试；
+- [x] provenance 保留已测试；
+- [x] 重复/未知 Tool 已测试；
+- [x] Tool 执行异常标准化已测试；
+- [x] pytest passed；
+- [x] ruff passed。
