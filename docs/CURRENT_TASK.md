@@ -4,10 +4,10 @@
 
 **Stage 2 / Slice 2A — AgentState Contract Foundation**
 
-所属实施清单：**Milestone 2 — AgentState 与 Memory**。
+所属实施清单：`PLAN.md` 中的 **Stage 2 — AgentState 与 Memory**。
 
 本文件是唯一的实时任务交接文档，只保留当前 Slice；长期边界以 `SPEC.md` / `DECISIONS.md` 为准，
-长期 Stage 与 Milestone 状态分别以 `TECHNICAL_ROADMAP.md` 和 `PLAN.md` 为准。
+长期 Stage 定义以 `TECHNICAL_ROADMAP.md` 为准，其 checklist 和 Acceptance 状态以 `PLAN.md` 为准。
 
 ## 2. Objective
 

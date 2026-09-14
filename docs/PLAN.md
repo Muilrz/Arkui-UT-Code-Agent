@@ -2,11 +2,11 @@
 
 ## 1. 使用方式
 
-本文件维护 Codex 和人工开发共同遵循的里程碑顺序与验收点。
+本文件维护 Codex 和人工开发共同遵循的 Stage 实施顺序与验收点。
 
-每个 **Milestone N** 对应 `TECHNICAL_ROADMAP.md` 的 **Stage N**，维护该阶段的长期 checklist 和
-Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实现、测试、验收且范围可控的
-**Slice NA / NB / NC ...**；Slice 只记录在 `CURRENT_TASK.md`，不作为新的 Stage。
+每个 **Stage N** 对应 `TECHNICAL_ROADMAP.md` 的同名长期阶段，本文件只维护该 Stage 的 checklist 和
+Acceptance，不引入额外任务层级。实际开发从未完成 checklist 中按依赖选取可独立实现、测试、验收且
+范围可控的 **Slice NA / NB / NC ...**；Slice 只记录在 `CURRENT_TASK.md`，不作为新的 Stage。
 
 不要把这里写成每天的工作日志：
 
@@ -24,7 +24,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 [!] 阻塞
 ```
 
-## Milestone 0 — Repository Baseline
+## Stage 0 — Repository Baseline
 
 - [x] Fork/import `arkui-ut-code-agent`。
 - [x] Pin upstream baseline revision（`SWE-agent/mini-swe-agent@04d809ce`）。
@@ -36,7 +36,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 **Acceptance：** baseline 可运行；reused/project-owned 边界可读；无自建 Repository Index。
 
-## Milestone 1 — ToolResult / Observation / Tool Registry
+## Stage 1 — ToolResult / Observation / Tool Registry
 
 - [x] 定义 `ToolResult`。
 - [x] 定义 `Observation`。
@@ -51,7 +51,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 **Acceptance：** 所有 Tool 都通过统一结果模型进入 Observation，失败不会绕过 Agent 状态机。
 
-## Milestone 2 — AgentState 与 Memory
+## Stage 2 — AgentState 与 Memory
 
 - [ ] 定义 `AgentState`。
 - [ ] 实现 Working Memory。
@@ -63,7 +63,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 **Acceptance：** 不重放完整 chat history 也可以恢复当前任务的关键状态与 Evidence。
 
-## Milestone 3 — Context Builder
+## Stage 3 — Context Builder
 
 - [ ] 定义 context sections 和预算策略。
 - [ ] 选择 relevant Task Memory。
@@ -75,7 +75,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 **Acceptance：** Context 大小有界，同时保留下一步决策所需 Evidence。
 
-## Milestone 4 — Planning 与 Control Loop
+## Stage 4 — Planning 与 Control Loop
 
 - [ ] 定义 `Plan` / `PlanStep`。
 - [ ] Initial Planning。
@@ -86,7 +86,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 **Acceptance：** Trace 中每个 Step 都能看到 current_goal、decision、action、observation、state update。
 
-## Milestone 5 — RetrievalRouter
+## Stage 5 — RetrievalRouter
 
 - [ ] 定义少量 Retrieval Intent。
 - [ ] Intent → KB/source/SemanticProvider mapping。
@@ -96,7 +96,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 **Acceptance：** Router 只做映射；“当前缺什么”仍由 Planner/Agent 决定。
 
-## Milestone 6 — External Semantic Provider
+## Stage 6 — External Semantic Provider
 
 ### 6.1 前置 Spike
 
@@ -120,7 +120,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 **Acceptance：** Semantic backend 缺失时，任务仍可以 KB + source 执行；项目中不存在自研 clangd/LSP/MCP Server。
 
-## Milestone 7 — Task Relation Graph
+## Stage 7 — Task Relation Graph
 
 - [ ] 定义 task-local node/edge types。
 - [ ] 由 Evidence 更新 Graph。
@@ -130,7 +130,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 **Acceptance：** Graph 为 Evidence-driven、current-task-only。
 
-## Milestone 8 — UT Development / Repair Loop
+## Stage 8 — UT Development / Repair Loop
 
 - [ ] Target / Component / Function localization。
 - [ ] Existing Test / Fixture / Mock discovery。
@@ -143,7 +143,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 **Acceptance：** 至少一个 ArkUI Gold Case end-to-end 成功，并能从失败的第一次尝试通过 Evidence-driven Repair 恢复。
 
-## Milestone 9 — Trace 与 Evaluation
+## Stage 9 — Trace 与 Evaluation
 
 - [ ] 完整 Execution Trace serialization。
 - [ ] 记录 model calls / token / cost / step / edit / build / test。
@@ -156,7 +156,7 @@ Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实�
 
 ## Cross-Cutting Quality Gates
 
-任何 Milestone 标记 `[x]` 前检查：
+任何 Stage checklist 标记 `[x]` 前检查：
 
 - [ ] 新增 deterministic logic 有对应测试。
 - [ ] Error / degraded path 已测试。
