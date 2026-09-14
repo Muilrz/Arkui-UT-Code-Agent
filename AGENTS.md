@@ -30,8 +30,8 @@ Task
 1. `docs/SPEC.md`：稳定需求、系统边界、必须满足的约束。
 2. `docs/DECISIONS.md`：已经确认、不得静默推翻的架构决策。
 3. `docs/TECHNICAL_ROADMAP.md`：目标架构与阶段性技术路线。
-4. `docs/CURRENT_TASK.md`：当前实际开发目标、范围和阻塞项。
-5. `docs/PLAN.md`：里程碑、依赖和验收检查点。
+4. `docs/PLAN.md`：里程碑、依赖和验收检查点。
+5. `docs/CURRENT_TASK.md`：当前实际开发目标、范围和阻塞项。
 
 若文档冲突，优先级为：
 
@@ -44,6 +44,32 @@ SPEC.md
 ```
 
 `CURRENT_TASK.md` 可以缩小当前范围，但不得突破 `SPEC.md` 的长期边界。
+
+## 任务层级与命名
+
+后续开发统一使用以下三级结构：
+
+- **Stage N**：`TECHNICAL_ROADMAP.md` 定义的长期架构演进阶段，只描述目标、Deliverables 和 Exit Criteria。
+- **Milestone N**：`PLAN.md` 中与 Stage N 对应的实施与验收清单；当前两者基本 1:1 对应。
+- **Slice NA / NB / NC ...**：Milestone 内可独立实现、测试、验收且改动范围可控的开发切片。
+
+引用切片时使用完整形式，例如：
+
+```text
+Stage 1 / Slice 1A — Contract Foundation
+```
+
+不得再把 `1A / 1B / 1C` 称为 `Stage 1A / Stage 1B / Stage 1C`。Slice 是实施划分，不是永久架构规范；
+可以根据真实依赖调整，但必须属于现有 Stage/Milestone，且不得扩大 `SPEC.md` 定义的项目边界。
+
+文档职责固定如下：
+
+- `TECHNICAL_ROADMAP.md` 不随小型开发任务频繁更新；
+- `PLAN.md` 只维护 Milestone 的长期 checklist 和 Acceptance，且勾选状态必须有代码、测试或 Git Evidence；
+- `CURRENT_TASK.md` 是唯一实时交接文档，每次只保留当前或刚完成的一个 Slice，切换 Slice 时直接替换旧状态，不追加历史日志。
+
+每次开始开发时，从当前 Milestone 的未完成 checklist 中按依赖选择一个可独立实现、测试和验收的 Slice，
+不要一次直接实现整个 Milestone。
 
 ## 本项目负责的能力
 

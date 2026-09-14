@@ -16,7 +16,8 @@ Trace / Evaluation
 
 而不是重复开发 clangd、LSP、全仓索引或持久化 Code Graph。
 
-本文件描述**目标架构和实现阶段**；实时开发状态写在 `CURRENT_TASK.md`。
+本文件描述**目标架构和长期 Stage**；每个 Stage 只维护 Deliverables 和 Exit Criteria，不记录 Slice 划分或实时开发状态。
+与 Stage 对应的实施验收清单写在 `PLAN.md`，当前 Slice 写在 `CURRENT_TASK.md`。
 
 ## 2. 目标架构
 

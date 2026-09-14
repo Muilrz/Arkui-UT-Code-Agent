@@ -4,6 +4,10 @@
 
 本文件维护 Codex 和人工开发共同遵循的里程碑顺序与验收点。
 
+每个 **Milestone N** 对应 `TECHNICAL_ROADMAP.md` 的 **Stage N**，维护该阶段的长期 checklist 和
+Acceptance。实际开发从未完成 checklist 中按依赖选取可独立实现、测试、验收且范围可控的
+**Slice NA / NB / NC ...**；Slice 只记录在 `CURRENT_TASK.md`，不作为新的 Stage。
+
 不要把这里写成每天的工作日志：
 
 - 当前实际 Slice / Blocker 写在 `CURRENT_TASK.md`；
@@ -22,13 +26,13 @@
 
 ## Milestone 0 — Repository Baseline
 
-- [ ] Fork/import `arkui-ut-code-agent`。
-- [ ] Pin upstream baseline revision。
-- [ ] 识别可直接复用的 upstream modules。
-- [ ] 建立 project-owned package/module 边界。
-- [ ] 保留可运行 baseline agent config，用于未来 ablation。
-- [ ] 记录正常 install/test/lint/type/smoke 命令。
-- [ ] 明确 Semantic 采用 external clangd MCP + local adapter，不实现 Server。
+- [x] Fork/import `arkui-ut-code-agent`。
+- [x] Pin upstream baseline revision（`SWE-agent/mini-swe-agent@04d809ce`）。
+- [x] 识别可直接复用的 upstream modules。
+- [x] 建立 project-owned package/module 边界。
+- [x] 保留可运行 baseline agent config，用于未来 ablation。
+- [x] 记录正常 install/test/lint/type/smoke 命令。
+- [x] 明确 Semantic 采用 external clangd MCP + local adapter，不实现 Server。
 
 **Acceptance：** baseline 可运行；reused/project-owned 边界可读；无自建 Repository Index。
 
