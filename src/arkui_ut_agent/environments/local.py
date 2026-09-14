@@ -1,6 +1,7 @@
 import os
 import platform
 import subprocess
+from collections.abc import Mapping
 from typing import Any
 
 from pydantic import BaseModel
@@ -29,12 +30,25 @@ class LocalEnvironment:
         self.config = config_class(**kwargs)
         self.backend = backend or get_shell_backend(self.config.shell_backend)
 
-    def execute(self, action: dict, cwd: str = "", *, timeout: int | None = None) -> dict[str, Any]:
+    def execute(self, action: dict, cwd: str = "", *, timeout: float | None = None) -> dict[str, Any]:
         """Execute a command in the local environment and return the result as a dict."""
-        command = action.get("command", "")
+        output = self.execute_command(action.get("command", ""), cwd=cwd, timeout=timeout)
+        self._check_finished(output)
+        return output
+
+    def execute_command(
+        self,
+        command: str,
+        cwd: str = "",
+        *,
+        timeout: float | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a command without applying agent-level submission sentinel semantics."""
         cwd = cwd or self.config.cwd or os.getcwd()
+        effective_env = os.environ | self.config.env | dict(env or {})
         try:
-            result = _run(command, cwd, os.environ | self.config.env, timeout or self.config.timeout, self.backend)
+            result = _run(command, cwd, effective_env, timeout or self.config.timeout, self.backend)
             output = {"output": result.stdout, "returncode": result.returncode, "exception_info": ""}
         except Exception as e:
             raw_output = getattr(e, "output", None)
@@ -47,7 +61,6 @@ class LocalEnvironment:
                 "exception_info": f"An error occurred while executing the command: {e}",
                 "extra": {"exception_type": type(e).__name__, "exception": str(e)},
             }
-        self._check_finished(output)
         return output
 
     def _check_finished(self, output: dict):
@@ -89,7 +102,7 @@ def _run(
     command: str,
     cwd: str,
     env: dict[str, str],
-    timeout: int,
+    timeout: float,
     backend: ShellBackend,
 ) -> subprocess.CompletedProcess[str]:
     """Like subprocess.run, but kills the whole process group on timeout so no children are orphaned."""

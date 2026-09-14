@@ -14,25 +14,26 @@ Codex 每次开始开发时应优先读取本文件，但长期边界仍以 `SPE
 
 ## 2. Current Objective
 
-**Stage 1C：Editing Tools 已完成。**
+**Stage 1D：Execution Tools 已完成。**
 
-已基于 Stage 1A/1B 的统一契约和 repository-root 边界，实现确定性的文本写入与精确补丁修改。
+已复用现有 `LocalEnvironment` / `ShellBackend` 执行机制，实现薄的 command、build、test Tool wrapper。
 
 后续 Stage 1 Slice 尚未开始。
 
 ## 3. 当前 In Scope
 
-1. `write_file` 创建或覆写 UTF-8 文本文件。
-2. `apply_patch` 对唯一精确匹配执行文本替换。
-3. repository-root、相对路径及 symlink 安全边界。
-4. Editing Tool 原子注册与 dispatch normalization。
-5. 主要成功/失败路径的 deterministic unit tests。
+1. `run_command`。
+2. 显式 command 驱动的 `build` / `test`。
+3. repository-root 内 cwd 与显式 env override。
+4. execution result / timeout / failure normalization 与 provenance。
+5. 不触发 submission sentinel 的底层 execution primitive。
+6. Execution Tool 原子注册与 deterministic unit tests。
 
 ## 4. 当前 Out of Scope
 
 本 Slice 不实现：
 
-- Execution / ArkUI KB Tool；
+- ArkUI KB Tool；
 - Memory / Context Builder；
 - Planner / Replanner / Diagnose / Stop Policy；
 - RetrievalRouter；
@@ -43,18 +44,19 @@ Codex 每次开始开发时应优先读取本文件，但长期边界仍以 `SPE
 
 ## 5. Expected Deliverables
 
-- Windows / POSIX 兼容的 Editing Tool wrappers；
-- 明确且可测试的父目录创建与覆写行为；
-- 越界、冲突、编码和 IO 失败返回结构化 diagnostics 与 provenance；
-- 成功结果包含文件级修改信息，并经 Registry dispatch 归一化为 `Observation`。
+- 复用 `LocalEnvironment` / `ShellBackend` 的统一执行路径；
+- `run_command` / `build` / `test` 共用薄执行实现；
+- command、cwd、output、return code 与失败状态稳定进入 `ToolResult`；
+- env 只记录 override key，不把 value 写入 result / provenance；
+- dispatch 后统一归一化为 `Observation`。
 
 ## 6. Verification
 
-2026-09-14 Windows Stage 1C 验证结果：
+2026-09-14 Windows Stage 1D 验证结果：
 
 ```text
 py -m pytest -q
-→ 464 passed, 3 skipped, 1 warning, 0 failed, 0 errors
+→ 492 passed, 3 skipped, 1 warning, 0 failed, 0 errors
 
 py -m ruff check src tests
 → passed
@@ -71,12 +73,13 @@ warning 为既有 `last_n_messages_offset` deprecation warning，与本 Slice �
 
 ## 8. Completion Checklist
 
-- [x] `write_file` create / overwrite 已实现并测试；
-- [x] `apply_patch` success / mismatch / conflict 已实现并测试；
-- [x] repository 越界与 symlink 越界已阻止并测试；
-- [x] 非法参数、编码与 IO failure 已结构化并测试；
-- [x] Editing Tool 原子注册与 dispatch normalization 已测试；
-- [x] Windows / POSIX 文件内容与路径行为保持兼容；
+- [x] `run_command` success / non-zero / timeout 已实现并测试；
+- [x] `build` / `test` success / failure 已实现并测试；
+- [x] cwd / env override 契约已实现并测试；
+- [x] backend unavailable / 启动失败 / 非法参数已结构化并测试；
+- [x] submission sentinel 不逃逸 Tool contract；
+- [x] Execution Tool 原子注册与 dispatch normalization 已测试；
+- [x] Windows / POSIX backend 复用边界已测试；
 - [x] pytest passed；
 - [x] ruff passed；
 - [x] git diff --check passed。
