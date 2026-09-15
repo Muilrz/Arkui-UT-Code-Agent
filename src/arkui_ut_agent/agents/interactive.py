@@ -68,6 +68,7 @@ class InteractiveAgent(DefaultAgent):
                         "extra": {"actions": [{"command": command}]},
                     }
                     self.add_messages(msg)
+                    msg["extra"]["step_id"] = self._begin_step()
                     return msg
         try:
             with console.status("Waiting for the LM to respond..."):
@@ -129,7 +130,7 @@ class InteractiveAgent(DefaultAgent):
         try:
             self._ask_confirmation_or_interrupt(commands)
             for action in actions:
-                outputs.append(self.env.execute(action))
+                outputs.append(self._execute_action(action))
         except Submitted as e:
             self._check_for_new_task_or_submit(e)
         finally:

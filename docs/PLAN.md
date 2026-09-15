@@ -58,10 +58,14 @@ Acceptance，不引入额外任务层级。实际开发从未完成 checklist �
 - [x] 实现 Task Memory。
 - [x] 实现 Evidence Memory。
 - [x] 定义 Evidence identity / dedup。
-- [ ] 关联 `step_id`、Tool Call 与 Evidence provenance。
+- [x] 关联 `step_id`、Tool Call 与 Evidence provenance，并记录最小 Memory Update Event。
 - [x] 添加 serialization / update tests。
 
 **Acceptance：** 不重放完整 chat history 也可以恢复当前任务的关键状态与 Evidence。
+
+已由 `tests/agents/test_state_integration.py` 验证现有 Agent Loop 的 producing step/provenance 链路、
+trajectory 完整 AgentState snapshot、仅 snapshot 独立恢复、模型推测不晋升、dedup 与 isolation。
+Stage 2 本地验收检查项已收口；当前 Slice 的人工验收状态见 `CURRENT_TASK.md`。未进入 Stage 3。
 
 ## Stage 3 — Context Builder
 

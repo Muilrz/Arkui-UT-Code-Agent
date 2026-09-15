@@ -3,7 +3,7 @@
 import hashlib
 import json
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -90,7 +90,7 @@ class Evidence(BaseModel):
     and JSON compatibility, not authenticity or factual truth. Unknown locations
     must be explicitly represented as None. step_id is a caller-provided trace label.
     Content retains meaningful snippet whitespace; summary/source labels are trimmed.
-    No Observation-to-Evidence inference or automatic promotion is provided.
+    Only the execution boundary maps Tool Observations; model text is never promoted.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always", allow_inf_nan=False)
@@ -196,6 +196,25 @@ class EvidenceMemory(BaseModel):
         return handler(validated)
 
 
+class MemoryUpdateEvent(BaseModel):
+    """An already-applied task-local update, not a replay command or event bus.
+
+    Regions name existing state areas. Identities refer to facts related to that
+    update; empty is valid for Working/Task Memory updates. Immutable tuples avoid
+    a second mutable-state interface. No timestamps, random IDs or cross-task log.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
+
+    step_id: NonEmptyString
+    regions: tuple[Literal["working_memory", "task_memory", "evidence_memory"], ...] = Field(min_length=1)
+    evidence_identities: tuple[Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")], ...] = ()
+
+    @model_serializer(mode="wrap")
+    def _serialize_validated_event(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        return handler(type(self).model_validate(dict(self)))
+
+
 class AgentState(BaseModel):
     """Minimal, serializable state for one task execution.
 
@@ -238,6 +257,16 @@ class AgentState(BaseModel):
         """Return an isolated snapshot after validating all existing and changed fields."""
         return type(self).model_validate({**dict(self), **changes})
 
+    @classmethod
+    def from_trajectory(cls, trajectory: dict[str, Any]) -> "AgentState | None":
+        """Restore only the state snapshot; never replay or infer from messages.
+
+        Legacy/pre-run trajectories without a snapshot return None. Present but
+        malformed snapshots fail validation. This is not execution/model resumption.
+        """
+        snapshot = trajectory.get("agent_state")
+        return None if snapshot is None else cls.model_validate(snapshot)
+
     @model_serializer(mode="wrap")
     def _serialize_validated_state(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         """Reject invalid raw/container mutations before Pydantic converts any values."""
@@ -245,4 +274,4 @@ class AgentState(BaseModel):
         return handler(validated)
 
 
-__all__ = ["AgentState", "Evidence", "EvidenceMemory", "StopReason", "TaskMemory"]
+__all__ = ["AgentState", "Evidence", "EvidenceMemory", "MemoryUpdateEvent", "StopReason", "TaskMemory"]

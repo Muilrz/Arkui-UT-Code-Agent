@@ -9,11 +9,17 @@ import traceback
 from pathlib import Path
 
 from jinja2 import StrictUndefined, Template
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 
 from arkui_ut_agent import Environment, Model, __version__
+from arkui_ut_agent.agents.integration import _evidence_from_tool_observation
+from arkui_ut_agent.agents.state import AgentState, MemoryUpdateEvent
 from arkui_ut_agent.exceptions import FormatError, InterruptAgentFlow, LimitsExceeded, TimeExceeded
+from arkui_ut_agent.tools.contracts import Observation, ToolResult, normalize_tool_result
+from arkui_ut_agent.tools.execution import _backend_attribute, _effective_timeout, _normalize_execution_result
 from arkui_ut_agent.utils.serialize import recursive_merge
+
+_JSON_ADAPTER = TypeAdapter(JsonValue, config=ConfigDict(allow_inf_nan=False))
 
 
 class AgentConfig(BaseModel):
@@ -48,6 +54,11 @@ class DefaultAgent:
         self.n_calls = 0
         self.n_consecutive_format_errors = 0
         self._start_time = time.time()
+        self.state: AgentState | None = None
+        self.memory_updates: list[MemoryUpdateEvent] = []
+        self.tool_executions: list[dict] = []
+        self._step_count = 0
+        self._active_step_id: str | None = None
 
     def get_template_vars(self, **kwargs) -> dict:
         return recursive_merge(
@@ -89,6 +100,12 @@ class DefaultAgent:
         """Run step() until agent is finished. Returns dictionary with exit_status, submission keys."""
         self.extra_template_vars |= {"task": task, **kwargs}
         self.messages = []
+        # Reset task-local state/trace, preserving existing cost/call limit semantics.
+        self.state = AgentState(goal=task.strip() or "Unspecified task")
+        self.memory_updates = []
+        self.tool_executions = []
+        self._step_count = 0
+        self._active_step_id = None
         self.add_messages(
             self.model.format_message(role="system", content=self._render_template(self.config.system_template)),
             self.model.format_message(role="user", content=self._render_template(self.config.instance_template)),
@@ -100,6 +117,8 @@ class DefaultAgent:
             except FormatError as e:
                 # The call was billed before parsing failed, so query() never got to charge it.
                 self.cost += e.messages[0].get("extra", {}).get("cost", 0.0)
+                for message in e.messages:
+                    message.setdefault("extra", {})["step_id"] = self._active_step_id
                 self.n_consecutive_format_errors += 1
                 if 0 < self.config.max_consecutive_format_errors <= self.n_consecutive_format_errors:
                     self.add_messages(
@@ -145,16 +164,105 @@ class DefaultAgent:
                     "extra": {"exit_status": "TimeExceeded", "submission": ""},
                 }
             )
+        self._begin_step()
         self.n_calls += 1
         message = self.model.query(self.messages)
+        message.setdefault("extra", {})["step_id"] = self._active_step_id
         self.cost += message.get("extra", {}).get("cost", 0.0)
         self.add_messages(message)
         return message
 
     def execute_actions(self, message: dict) -> list[dict]:
         """Execute actions in message, add observation messages, return them."""
-        outputs = [self.env.execute(action) for action in message.get("extra", {}).get("actions", [])]
+        outputs = [self._execute_action(action) for action in message.get("extra", {}).get("actions", [])]
         return self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
+
+    def _begin_step(self) -> str:
+        """Allocate one task-local ordinal at an accepted query (including parse failures).
+
+        Limit checks do not allocate steps. Human queries use this same boundary;
+        n_calls remains model-call accounting, not a fabricated human model call.
+        current_step stays an opaque label, not a Planner schema.
+        """
+        step_id = f"step-{self._step_count + 1}"
+        state = self.state if self.state is not None else AgentState(goal="Unspecified task")
+        self.state = state.updated(current_step=step_id, next_action=None)
+        self._step_count += 1
+        self._active_step_id = step_id
+        self.memory_updates.append(MemoryUpdateEvent(step_id=step_id, regions=("working_memory",)))
+        return step_id
+
+    def _execute_action(self, action: dict) -> dict:
+        """Execute once, then update memory before model-specific observation formatting."""
+        step_id = self._active_step_id or self._begin_step()
+        tool_input = _JSON_ADAPTER.validate_python(action)
+        command = action.get("command")
+        self.state = self.state.updated(next_action=command if isinstance(command, str) and command.strip() else None)
+        self.memory_updates.append(MemoryUpdateEvent(step_id=step_id, regions=("working_memory",)))
+        try:
+            output = self.env.execute(action)
+        except BaseException:
+            # Submission/interrupts expose no raw Tool result. Preserve control flow,
+            # record the attempted call, and never promote exit text to Evidence.
+            self.tool_executions.append({
+                "step_id": step_id, "tool_name": "run_command", "tool_input": tool_input,
+                "observation": None, "evidence_identity": None, "status": "interrupted",
+            })
+            raise
+        if isinstance(output, Observation):
+            observation = output
+        elif isinstance(output, ToolResult):
+            observation = normalize_tool_result("run_command", output)
+        else:
+            # Reuse Stage 1's normalization of the already-executed command result;
+            # do not dispatch/re-run the command or change submission semantics.
+            cwd = getattr(getattr(self.env, "config", None), "cwd", "") or None
+            configured_env = getattr(getattr(self.env, "config", None), "env", {})
+            result = _normalize_execution_result(
+                tool_name="run_command", command=command or "", cwd=cwd,
+                timeout=_effective_timeout(self.env, None), env_keys=sorted(configured_env),
+                backend_name=_backend_attribute(self.env, "name"),
+                backend_dialect=_backend_attribute(self.env, "dialect"), raw_result=output,
+            )
+            observation = normalize_tool_result("run_command", result)
+        recorded_observation = self._record_tool_observation(step_id, tool_input, observation)
+        if not isinstance(output, (Observation, ToolResult)) and any(item.code == "invalid_execution_result" for item in observation.diagnostics):
+            return {"output": "", "returncode": -1, "exception_info": observation.summary}
+        if isinstance(output, (Observation, ToolResult)):
+            # Optional structured environments still feed the existing model formatter
+            # its shell-shaped output; memory mapping above never consumes this text.
+            text = json.dumps(recorded_observation) if recorded_observation is not None else (
+                observation.summary if isinstance(observation.summary, str) else ""
+            )
+            return {"output": text, "returncode": 0 if observation.success else 1, "exception_info": ""}
+        return output
+
+    def _record_tool_observation(self, step_id: str, tool_input: JsonValue, observation: Observation) -> dict | None:
+        """Only called with outputs of _execute_action, never assistant message extras."""
+        evidence, status = _evidence_from_tool_observation(observation, step_id)
+        identity = None
+        if evidence is not None:
+            identity = evidence.identity
+            memory, inserted = self.state.evidence_memory.add(evidence)
+            if inserted:
+                self.state = self.state.updated(evidence_memory=memory)
+                self.memory_updates.append(MemoryUpdateEvent(
+                    step_id=step_id, regions=("evidence_memory",), evidence_identities=(identity,),
+                ))
+            status = "added" if inserted else "duplicate"
+            # Evidence already validated/isolate-copied the entire result envelope.
+            payload = evidence.model_dump(mode="json")
+            recorded_observation = {"tool_name": observation.tool_name, **payload["content"], "summary": observation.summary,
+                                    "provenance": payload["provenance"]}
+        else:
+            # Invalid Any data/metadata must not break saving or be silently stringified.
+            recorded_observation = None
+            self.logger.warning("Evidence skipped for %s: %s", step_id, status)
+        self.tool_executions.append({
+            "step_id": step_id, "tool_name": observation.tool_name, "tool_input": tool_input, "observation": recorded_observation,
+            "evidence_identity": identity, "status": status,
+        })
+        return recorded_observation
 
     def serialize(self, *extra_dicts) -> dict:
         """Serialize agent state to a json-compatible nested dictionary for saving."""
@@ -177,7 +285,14 @@ class DefaultAgent:
             "messages": self.messages,
             "trajectory_format": "arkui-ut-code-agent-1.1",
         }
-        return recursive_merge(agent_data, self.model.serialize(), self.env.serialize(), *extra_dicts)
+        data = recursive_merge(agent_data, self.model.serialize(), self.env.serialize(), *extra_dicts)
+        # Additive 1.1 fields are authoritative, not recursively patchable by extras.
+        data.update({
+            "agent_state": None if self.state is None else self.state.model_dump(mode="json"),
+            "memory_updates": [MemoryUpdateEvent.model_validate(event).model_dump(mode="json") for event in self.memory_updates],
+            "tool_executions": _JSON_ADAPTER.validate_python(self.tool_executions),
+        })
+        return data
 
     def save(self, path: Path | None, *extra_dicts) -> dict:
         """Save the trajectory of the agent to a file if path is given. Returns full serialized data.

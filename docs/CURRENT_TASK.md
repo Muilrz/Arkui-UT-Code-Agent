@@ -2,145 +2,135 @@
 
 ## 1. Slice
 
-**Stage 2 / Slice 2C — Evidence Memory & Identity/Dedup**
+**Stage 2 / Slice 2D — Step / Provenance Integration & State Persistence**
 
-所属实施清单：`PLAN.md` 中的 **Stage 2 — AgentState 与 Memory**。
-本文件只保留本 Slice；按用户要求在代码实现前替换已验收的 2B 状态。
+所属清单：`PLAN.md` 的 Stage 2。本文件在代码实现前替换已验收的 2C 状态。
 
-## 2. Objective
+## 2. Objective / In Scope
 
-实现最小 task-scoped Evidence contract、Evidence Memory、deterministic identity/dedup，并接入
-AgentState 的 snapshot/serialization 数据契约。Working Memory 单一来源及 Task Memory contract 不变，
-不接入主 Agent Loop。
+最小集成现有 DefaultAgent：task-local deterministic step_id、实际 Tool execution 的 Observation →
+Evidence 显式确定性映射、EvidenceMemory 更新、Memory Update Event、trajectory AgentState snapshot
+与独立恢复。复用 Stage 1 Provenance 和现有命令归一化，不重写 Loop 或工具业务实现。
 
-## 3. In Scope
+保留 Working Memory 单一来源、2A–2C update/serialization/mutation/isolation contract、identity/dedup
+规则和 legacy state 默认值。以 deterministic tests 验证 Stage 2 Acceptance。
 
-1. 检查现有 state、2A/2B tests 和 Stage 1 ToolResult / Observation / Provenance。
-2. Evidence 表达 source、location、content/summary、复用的 Provenance、显式 step_id。
-3. canonical JSON + SHA-256 identity；事实内容与 provenance 参与，step_id 不参与。
-4. 同 identity 保留首次事实记录/step_id，保持首次插入顺序；不创建 occurrence history。
-5. 支持显式 caller 提供记录，不自动从模型文本、hypotheses/messages 或 arbitrary Observation 晋升 Evidence。
-6. AgentState 集成、legacy payload 恢复、full revalidation、snapshot isolation 和 round-trip tests。
+## 3. Out of Scope
 
-## 4. Out of Scope
+Context Builder、Planner/Replanner、Diagnose/新 Stop Policy、RetrievalRouter、SemanticProvider、
+Task Relation Graph、ArkUI UT Workflow、persistent repository memory/index、Vector DB/RAG、
+EventBus/event sourcing/replay/store、cross-task event history。完成后不进入 Stage 3。
 
-- step lifecycle / generator / 自动 step 分配；
-- ToolCall → Observation → Evidence 自动链路或 step 自动绑定；
-- memory update event / execution trace linkage；
-- Agent Loop 接入、Context Builder、Planner / Replanner、Diagnose / Stop Policy；
-- RetrievalRouter、SemanticProvider、Task Relation Graph、UT Workflow；
-- persistent repository memory/index/cache、cross-task Evidence store；
-- Vector DB / embedding / RAG、fuzzy merge / ranking / similarity search；
-- Slice 2D。
-
-## 5. Expected Deliverables
-
-- Evidence 与 task-scoped EvidenceMemory；不复制 Stage 1 Provenance，不建立 taxonomy。
-- deterministic identity 与 first-wins dedup，语义由测试固定。
-- AgentState 可独立保存 Working / Task / Evidence Memory。
-- deterministic tests 不依赖 LLM、网络、MCP 或 ArkUI repo。
-- 仅更新 CURRENT_TASK / PLAN，无真实冲突时不修改长期架构文档。
-
-## 6. Verification
-
-规定执行：
+## 4. Verification
 
 ```text
-py -m pytest -q tests/agents/test_evidence_memory.py
-py -m pytest -q tests/agents/test_state.py tests/agents/test_task_memory.py tests/agents/test_evidence_memory.py tests/agents/test_init.py tests/run/test_save.py tests/utils/test_serialize.py tests/tools/test_contracts.py
+py -m pytest -q tests/agents/test_state_integration.py
+py -m pytest -q tests/agents/test_state.py tests/agents/test_task_memory.py tests/agents/test_evidence_memory.py tests/agents/test_state_integration.py
+py -m pytest -q tests/agents tests/run/test_save.py tests/utils/test_serialize.py tests/tools
 py -m pytest -q
 py -m ruff check src tests
 git diff --check
 ```
+
+## 5. Status / Blockers
+
+本地代码、Slice/相关回归及全量验证已完成，无 Blocker。提交推送后停止等待人工验收，
+不进入 Stage 3。CI 结果不作为本地测试结果冒报。
 
 实际验证结果：
 
 ```text
-py -m pytest -q tests/agents/test_evidence_memory.py
-65 passed in 0.78s
-
-py -m pytest -q tests/agents/test_state.py tests/agents/test_task_memory.py tests/agents/test_evidence_memory.py tests/agents/test_init.py tests/run/test_save.py tests/utils/test_serialize.py tests/tools/test_contracts.py
-159 passed in 1.06s（包含全部 61 项 Slice 2A / 2B tests）
-
-py -m pytest -q
-660 passed, 4 skipped, 1 warning in 129.37s
-
-py -m ruff check src tests
-All checks passed!
-
-git diff --check
-passed
+Slice 2D: 48 passed in 0.59s
+2A–2D contract regression: 174 passed in 1.14s
+Related regression (agents / save / serialize / tools): 513 passed, 1 skipped in 103.22s
+Full pytest: 708 passed, 4 skipped, 1 warning in 124.60s
+Ruff: All checks passed!
+git diff --check: passed
 ```
 
-全量测试运行前把已安装项目的 `D:\Work\Python\Scripts` 加入本次验证进程 PATH，确保现有 console
-script 可被 CLI test 找到；未修改测试规避环境问题。Warning 为既有 cache-control deprecated 参数提示。
+全量验证进程 PATH 加入已安装项目的 `D:\Work\Python\Scripts`，确保既有 console script 被 CLI tests
+找到；未修改测试规避环境问题。Warning 为既有 cache-control deprecated 参数提示。
 
-## 7. Blockers
+## 6. 实际 Contract / Integration 边界
 
-无 Blocker。代码与本地验证已完成，人工验收待进行；按要求提交推送后停止，不进入 Slice 2D。
+### Step
+
+- 每次通过现有 limit checks、开始 query 时分配 task-local `step-1`、`step-2` …；模型 parse failure
+  仍属于已开始 step，未通过 limit checks 的尝试不分配。一个 query 的所有实际 actions 共用该 ID。
+- ordinal 与现有 query/step 边界一致；Interactive human query 使用同一入口，避免伪造 n_calls。
+  `n_calls`、cost/time/format-error policy 保持原有 accounting/行为，不新增 stop policy。
+- ID 从 step 开始保持 active 到下一次 query；退出保留最后 step。`current_step` 只是 opaque string，
+  未升级为 PlanStep。模型/人类 query 消息中的 step_id 由 execution 覆盖，不信任模型提供的 ID。
+- run 开始清空 task-local state/events/tool records/ordinal；保留原有 agent-instance cost/call accounting。
+  空的 legacy run task 用明确 `Unspecified task` goal；不从 chat history 推断 goal。
+
+### Tool / Observation / Evidence
+
+- DefaultAgent / InteractiveAgent 共用 `_execute_action`，仍调用 Environment.execute 一次。
+  原 shell output 使用 Stage 1 已有 execution normalizer → ToolResult → Observation，不重跑命令，
+  不修改 Registry、Tool business implementation、submission sentinel 或 confirmation 行为。
+- execution shell adapter 是已执行 command 的 provenance producer，保留 command、configured cwd（未知为
+  None）、returncode、timeout、backend/dialect、env override names，不保存 env 值。对于实际返回的
+  ToolResult / Observation 直接复用其 provenance；不补造缺失 provenance。
+- project-owned internal `_evidence_from_tool_observation` 只由 Tool execution 边界调用。
+  source = tool_name，content 为完整 `{success, data, diagnostics}` envelope，summary 为 Tool summary，
+  provenance 使用 Stage 1 原模型并复制深层 metadata，step_id 来自 active execution。
+- 所有 provenance/location 保留；若只有一个非 None location 则使用它作为顶层定位，否则顶层为 None。
+  不提炼事实、不猜字段语义、不提供模型文本 → Evidence 的公开入口；结构验证不证明真实性。
+- 成功/失败 Observation，只要具有实际 data、diagnostics 或非空 Tool summary，都可记录。
+  failure Evidence 明确保留 success=False，描述实际失败结果，不声称 action 成功或任务已验证。
+- 缺失 provenance → `missing_provenance`；非法 provenance/非 JSON payload → `invalid_provenance_or_payload`；
+  无 data/diagnostics/summary → `empty_result`。skip 不更新 EvidenceMemory，记录 warning 和 trace skip reason，
+  不强制 stringify 非 JSON 工程事实。Stage 1 adapter 自己报告的 invalid raw result/timeout/backend failure
+  diagnostics 是真实失败结果，可以入 Evidence；malformed raw output 给 formatter 显式 failure view。
+- Submitted / interruption / 未归一化抛出的异常没有可用 raw Tool result：保留原 control flow，记录
+  `interrupted` 调用，不把 exit/exception text 晋升 Evidence。已有成功 Tool 的证据仍保留。
+- assistant extras、messages、hypotheses 永不作为 Observation/Evidence 输入。TaskMemory 不自动更新。
+
+### Identity / Memory Update Event
+
+- 2C identity、first-wins dedup、插入顺序规则不变。首次插入更新 AgentState 并记录 Evidence event；
+  duplicate 不追加事实/不伪造 Evidence update，首次 step_id 保留。本次 step 的实际 Observation 仍在
+  tool_executions 中关联相同 identity；这里是现有 trajectory trace，不是新的 occurrence store。
+- `MemoryUpdateEvent`：required nonempty step_id、非空 regions（working_memory/task_memory/evidence_memory）、
+  optional evidence_identities（sha256 digest 列表）。frozen model + immutable tuples，JSON 使用 arrays，
+  unknown/invalid fields 拒绝；dump 完整重校验。无随机 ID、timestamp、EventBus、replay 或 persistent store。
+- step/action Working snapshot 更新及真实 EvidenceMemory 插入成功之后才追加 event。
+  events 只记录已应用的区域更新，不是 patch/replay command；当前没有自动 TaskMemory 事实写入策略。
+- 状态更新仍只使用 AgentState.updated() / EvidenceMemory.add()；父子 snapshot 隔离及 2A–2C
+  full validation/mutation boundary 不变。原地 mutation / unsafe copy 不是支持的更新接口。
+
+### Persistence / Compatibility
+
+- 保留 `trajectory_format = arkui-ut-code-agent-1.1` 和原 messages/info/config；仅 additive 增加
+  `agent_state`（完整 JSON snapshot）、`memory_updates`、`tool_executions`。
+- pre-run `agent_state=None`，不伪造已执行 task state。三个新字段由 agent 权威生成，extra dict 不允许
+  递归覆盖/patch；其它字段保持原 recursive_merge 行为。
+- `AgentState.from_trajectory()` 只读取 snapshot，完全不读取 messages/info/events；缺失/None snapshot
+  返回 None（legacy/pre-run），present malformed state 确定性 ValidationError。
+  旧 2A/2B/2C state payload 的 default/validation 不变。
+- restore 是关键状态恢复，不是模型/environment/完整执行自动 resume。state/provenance/step_id 与
+  identity round-trip 保持，event 独立可序列化；不建设 replay engine。
+- trajectory dump 通过原 Pydantic serializer 重新校验完整 AgentState，非法嵌套 mutation 即使 extra 试图
+  覆盖 snapshot 也失败（PydanticSerializationError）；trace JSON/events 也验证后输出隔离快照。
+
+## 7. Stage 2 Acceptance / 后续边界
+
+tests/agents/test_state_integration.py 使用 fake environment、实际 ToolRegistry dispatch 与 deterministic
+model，覆盖独立保存/恢复 Working、Task、Evidence Memory、producing step/provenance linkage、模型推测不
+晋升、dedup、snapshot isolation、mutation failure 和 legacy trajectory/state compatibility。
+
+不进入 Stage 3。后续 Context Builder 的选择/压缩、Planner schema、Diagnose/Stop Policy、完整 Stage 9 trace
+与 execution resume 不在本 Slice；本 Slice 不推断 confirmed TaskMemory 内容。
 
 ## 8. Completion Checklist
 
-- [x] Evidence required fields / content-summary / provenance 已实现并测试；
-- [x] identity 字段语义 / canonicalization / round-trip 稳定性已测试；
-- [x] dedup first-wins / insertion order / task isolation 已测试；
-- [x] AgentState update / legacy payload / round-trip 已测试；
-- [x] nested mutation 与 full revalidation 已测试；
-- [x] hypotheses/messages 不自动晋升 Evidence 已测试；
-- [x] 2A / 2B 回归、全量 pytest、Ruff、diff check 通过；
-- [x] PLAN 按真实 Evidence 更新。
-
-## 9. 实际 Contract 与更新边界
-
-代码位于 project-owned `agents/state.py`；未新增 MemoryManager、registry、持久索引或 taxonomy。
-
-### Evidence
-
-- required：`source`（非空 Tool 来源标签）、`location`（非空定位或显式 None）、非空
-  `list[Provenance]`、`step_id`（非空 caller trace 标签）。
-- `content` 为 optional JSON value，`summary` 为 optional 非空字符串，至少一个非 None。
-  提供的空字符串/空 list/空 dict 被拒绝；`0`、`False` 是有效 content。content 保留源码空白，
-  summary/source/定位/step 标签去除首尾空白。所有 JSON number 必须有限。
-- 直接复用 Stage 1 Provenance。每次校验从其原始字段重新构造现有类型，要求非空 source、有效
-  optional location 和 JSON-compatible metadata，复制深层容器；不改变 Stage 1 contract。
-- caller 必须从 producing Tool 显式提供 provenance；结构校验不证明其真实性或事实真伪。
-- `identity` 是重新计算的 property，不是 persisted/cache 字段，不接受 caller 传入或伪造 identity。
-
-### Identity
-
-- 参与字段：source、location、content、summary、完整 provenance（source/location/metadata）。
-  step_id 不参与，但仍须合法；不存储 occurrence history。
-- 使用 JSON `sort_keys=True`、`separators=(",", ":")`、`ensure_ascii=False`、`allow_nan=False`，
-  UTF-8 编码后计算标准 SHA-256，返回 `sha256:<64 hex>`。
-- mapping 插入顺序不影响 identity；provenance 按每条 canonical JSON 排序后参与 digest，列表顺序
-  不影响 identity，但重复 provenance 的数量保留语义。content 数组顺序仍有事实语义，变化会改变 identity。
-- tests 固定 canonical 字段/形式、内容/provenance 修改、跨进程/hash seed、Unicode 和 round-trip 稳定性。
-
-### Evidence Memory / AgentState
-
-- `records: list[Evidence]` 默认独立空列表；construction、updated、恢复都按 identity first-wins dedup。
-  所有记录先完成 validation，再去重，非法重复记录不能被隐藏。
-- `add(record)` 是显式入口，返回 `(new_snapshot, inserted_bool)`；首次为 True，重复为 False。
-  两种情况均返回隔离的新 memory；同 identity 保留首次完整记录及其 step_id，不合并后续记录。
-- 不同 identity 保留，各记录按首次加入顺序排列；dedup 只在当前 task memory 实例中运行。
-- `updated(**changes)` 整字段替换，不是 nested patch；parent 的入口仍是原有 `AgentState.updated()`：
-
-  ```python
-  next_memory, inserted = state.evidence_memory.add(explicit_tool_evidence)
-  next_state = state.updated(evidence_memory=next_memory)
-  ```
-
-- `AgentState.evidence_memory` 使用 default_factory；旧 2A/2B dict/JSON payload 自动获得空 memory。
-  Working Memory 无重复来源，Task Memory schema 不变，hypotheses/messages 不自动进入 Evidence。
-- dump/恢复继续使用 Pydantic dump/validate APIs，父子快照、content、Provenance metadata 与原始输入隔离。
-  顶层赋值禁止；原地 mutation、model_copy(update=...)、model_construct() 不是支持的更新接口。
-  更新/identity/恢复时完整重校验，失败为 ValidationError；所有 dump（含 exclude）在转换前重校验，
-  非法状态为 PydanticSerializationError。不接入 DefaultAgent 或 trajectory format。
-
-## 10. Slice 2D 接口约束
-
-- step_id 仅由 caller 显式提供，不定义 PlanStep，不生成或分配 step。
-- 同事实跨 step first-wins，不保存 occurrence/event history。
-- ToolCall/Observation/step/Evidence 的关联与 memory events 留给 2D。
-- 不从 arbitrary Observation 猜测事实或自动晋升；provenance 必须由 caller 从 Tool 来源显式提供。
-- 结构校验不证明事实真实性，不新增平行 provenance 系统。
+- [x] deterministic step/query lifecycle 与同 step / 不同 step linkage；
+- [x] 实际 Tool output → Observation → Evidence 映射与 provenance 保留；
+- [x] failure / skip / interrupted 规则与模型文本不晋升；
+- [x] EvidenceMemory dedup 与 AgentState snapshot 更新；
+- [x] 最小 Memory Update Event validation / serialization；
+- [x] trajectory snapshot / 独立恢复 / legacy compatibility；
+- [x] 2A–2C mutation / isolation / serialization tests 保持通过；
+- [x] Slice、相关回归、全量 pytest、Ruff、diff check 通过；
+- [x] PLAN Stage 2 checklist / Acceptance 按真实结果收口，未进入 Stage 3。
