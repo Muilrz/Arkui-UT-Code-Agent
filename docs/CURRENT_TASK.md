@@ -53,21 +53,53 @@ py -m ruff check src tests
 git diff --check
 ```
 
-本 Slice 尚未开始实现，暂无验证结果。
+实际执行结果：
+
+```text
+py -m pytest -q tests/agents/test_state.py
+15 passed in 0.12s
+
+py -m pytest -q tests/agents/test_state.py tests/agents/test_init.py tests/run/test_save.py tests/utils/test_serialize.py tests/tools/test_contracts.py
+48 passed in 0.34s
+
+py -m pytest -q
+549 passed, 4 skipped, 1 warning in 113.75s
+
+py -m ruff check src tests
+All checks passed!
+
+git diff --check
+passed
+```
+
+全量 pytest 首次运行时，当前 Python 环境未把已 editable 安装项目的 `D:\Work\Python\Scripts` 放入
+`PATH`，导致 `test_arkui_ut_agent_help` 无法找到 `arkui-ut-agent`。补齐该现有 console script 目录后，
+单项重跑为 `1 passed`，随后按上方命令全量重跑通过；未修改代码或测试来规避该环境问题。
 
 ## 7. Blockers
 
-无已知 Blocker。开始实现前需先确认现有 trajectory serialization 的可复用边界。
+无 Blocker。现有 trajectory serialization 继续负责包含 `messages` 的完整运行记录；`AgentState` 使用
+Pydantic 的 JSON serialization 独立保存任务执行状态，本 Slice 未修改 trajectory format 或主 Agent Loop。
 
 ## 8. Completion Checklist
 
-- [ ] 已核对现有 Agent Loop 与 serialization 边界；
-- [ ] `AgentState` 最小字段和约束已定义；
-- [ ] 默认值与更新行为已测试；
-- [ ] serialization round-trip 已测试；
-- [ ] invalid/error path 已测试；
-- [ ] 最小相关测试通过；
-- [ ] 全量 pytest 通过；
-- [ ] ruff 通过；
-- [ ] `git diff --check` 通过；
-- [ ] `PLAN.md` 状态按真实 Evidence 更新。
+- [x] 已核对现有 Agent Loop 与 serialization 边界；
+- [x] `AgentState` 最小字段和约束已定义；
+- [x] 默认值与更新行为已测试；
+- [x] serialization round-trip 已测试；
+- [x] invalid/error path 已测试；
+- [x] 最小相关测试通过；
+- [x] 全量 pytest 通过；
+- [x] ruff 通过；
+- [x] `git diff --check` 通过；
+- [x] `PLAN.md` 状态按真实 Evidence 更新。
+
+## 9. 后续接口约束
+
+- `AgentState` 是 task-scoped execution state，不包含或恢复 conversation `messages`；trajectory 仍是独立运行记录。
+- `current_plan` / `current_step` 在正式 `Plan` / `PlanStep` contract 出现前只承诺 JSON-compatible，后续
+  Planner Slice 应替换或收窄表示，而不是依赖本 Slice 假设出的结构。
+- 后续 Working / Task / Evidence Memory 可把 `AgentState` 作为稳定宿主，但不得把模型推测直接写成
+  confirmed Evidence；Evidence identity、dedup、provenance 与 `step_id` 仍留给后续 Slice。
+- 状态持久化使用 `model_dump(mode="json")` / `model_dump_json()`，恢复使用 `model_validate()` /
+  `model_validate_json()`；unknown field、非法枚举、负数/非整数 retry count 与非 JSON plan/step 均确定性失败。
