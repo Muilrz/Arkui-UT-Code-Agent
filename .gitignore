@@ -194,4 +194,5 @@ outputs/
 logs/
 .idea/
 .DS_Store
+desktop.ini
 

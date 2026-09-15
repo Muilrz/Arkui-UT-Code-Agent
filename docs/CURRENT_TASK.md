@@ -22,6 +22,7 @@ Evidence Memory 切片提供稳定宿主，但本 Slice 不提前实现完整 Me
    `blocking_issue` 与 stop/retry state 的基础表示。
 4. 为默认值、更新和序列化/反序列化添加 deterministic unit tests。
 5. 记录后续 Memory 切片所依赖的明确接口，不预建无调用方抽象。
+6. 验收修正：移除误跟踪的 `desktop.ini` 并忽略；收口 mutation/update/serialization 校验边界。
 
 ## 4. Out of Scope
 
@@ -57,13 +58,13 @@ git diff --check
 
 ```text
 py -m pytest -q tests/agents/test_state.py
-15 passed in 0.12s
+22 passed in 0.17s
 
 py -m pytest -q tests/agents/test_state.py tests/agents/test_init.py tests/run/test_save.py tests/utils/test_serialize.py tests/tools/test_contracts.py
-48 passed in 0.34s
+55 passed in 0.34s
 
 py -m pytest -q
-549 passed, 4 skipped, 1 warning in 113.75s
+556 passed, 4 skipped, 1 warning in 111.77s
 
 py -m ruff check src tests
 All checks passed!
@@ -72,9 +73,8 @@ git diff --check
 passed
 ```
 
-全量 pytest 首次运行时，当前 Python 环境未把已 editable 安装项目的 `D:\Work\Python\Scripts` 放入
-`PATH`，导致 `test_arkui_ut_agent_help` 无法找到 `arkui-ut-agent`。补齐该现有 console script 目录后，
-单项重跑为 `1 passed`，随后按上方命令全量重跑通过；未修改代码或测试来规避该环境问题。
+本轮全量 pytest 在运行前把已 editable 安装项目的 `D:\Work\Python\Scripts` 加入验证进程 `PATH`，
+使 CLI integration test 可以找到现有 `arkui-ut-agent` console script；未修改代码或测试规避环境问题。
 
 ## 7. Blockers
 
@@ -93,6 +93,7 @@ Pydantic 的 JSON serialization 独立保存任务执行状态，本 Slice 未�
 - [x] ruff 通过；
 - [x] `git diff --check` 通过；
 - [x] `PLAN.md` 状态按真实 Evidence 更新。
+- [x] `desktop.ini` 已删除并忽略；mutation/update/serialization 验收修正已实现并测试。
 
 ## 9. 后续接口约束
 
@@ -103,3 +104,9 @@ Pydantic 的 JSON serialization 独立保存任务执行状态，本 Slice 未�
   confirmed Evidence；Evidence identity、dedup、provenance 与 `step_id` 仍留给后续 Slice。
 - 状态持久化使用 `model_dump(mode="json")` / `model_dump_json()`，恢复使用 `model_validate()` /
   `model_validate_json()`；unknown field、非法枚举、负数/非整数 retry count 与非 JSON plan/step 均确定性失败。
+- 支持的更新接口是 `state.updated(**changes)`，返回全量重新校验、集合互相隔离的新 snapshot；原状态
+  不变。顶层字段赋值被 `frozen=True` 禁止，`model_validate(state)` 也强制重新校验已有实例。
+- 内部 list/dict 的原地 mutation、`model_copy(update=...)`、`model_construct()` 不是支持的更新接口。
+  这些底层绕过行为可能在 Python 中执行，但下一次受支持更新会报 `ValidationError`；所有 Pydantic
+  dump 路径在转换前完整校验状态（含被 exclude 的字段），非法状态报 `PydanticSerializationError`，
+  不会输出部分或不可 JSON serialization 的状态。

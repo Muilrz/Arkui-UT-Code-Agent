@@ -2,6 +2,7 @@ import json
 
 import pytest
 from pydantic import ValidationError
+from pydantic_core import PydanticSerializationError
 
 from arkui_ut_agent.agents import AgentState, StopReason
 
@@ -54,16 +55,30 @@ def test_mutable_defaults_are_isolated():
     assert second.hypotheses == []
 
 
-def test_assignment_validates_updates():
+def test_updates_validate_a_new_isolated_snapshot():
     state = AgentState(goal="original")
 
-    state.next_action = "Run the focused test"
-    state.retry_count = 1
-    state.stop_reason = StopReason.REPEATED_FAILURE
+    updated = state.updated(
+        next_action="Run the focused test",
+        retry_count=1,
+        stop_reason=StopReason.REPEATED_FAILURE,
+        open_questions=["Which test target?"],
+        current_plan={"steps": ["verify"]},
+    )
 
-    assert state.next_action == "Run the focused test"
-    assert state.retry_count == 1
-    assert state.stop_reason is StopReason.REPEATED_FAILURE
+    assert updated.next_action == "Run the focused test"
+    assert updated.retry_count == 1
+    assert updated.stop_reason is StopReason.REPEATED_FAILURE
+    assert state.next_action is None
+    assert state.retry_count == 0
+    assert state.open_questions == []
+    assert state.current_plan is None
+
+    copied = updated.updated()
+    copied.open_questions.append("copy only")
+    copied.current_plan["steps"].append("copy only")
+    assert updated.open_questions == ["Which test target?"]
+    assert updated.current_plan == {"steps": ["verify"]}
 
 
 @pytest.mark.parametrize(
@@ -85,13 +100,55 @@ def test_invalid_state_fails_deterministically(payload, invalid_field):
     assert invalid_field in str(exc_info.value)
 
 
-def test_invalid_assignment_is_rejected():
+@pytest.mark.parametrize("changes", [{"retry_count": -1}, {"open_questions": [""]}, {"messages": []}])
+def test_invalid_update_is_rejected_without_changing_original(changes):
     state = AgentState(goal="task")
 
     with pytest.raises(ValidationError):
-        state.retry_count = -1
+        state.updated(**changes)
 
+    assert state == AgentState(goal="task")
+
+
+def test_field_assignment_is_not_a_supported_update():
+    state = AgentState(goal="task")
+
+    with pytest.raises(ValidationError) as exc_info:
+        state.retry_count = 1
+
+    assert exc_info.value.errors()[0]["type"] == "frozen_instance"
     assert state.retry_count == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "initial", "invalid_item"),
+    [
+        ("open_questions", ["known question"], ""),
+        ("hypotheses", ["unconfirmed idea"], "   "),
+        ("current_plan", {"items": []}, object()),
+        ("current_step", {"items": []}, float("nan")),
+    ],
+)
+def test_in_place_mutation_is_rejected_at_update_and_serialization_boundaries(field, initial, invalid_item):
+    state = AgentState(goal="task", **{field: initial})
+    container = getattr(state, field)
+    if isinstance(container, dict):
+        container = container["items"]
+    container.append(invalid_item)  # Deliberately bypass the supported update API.
+
+    with pytest.raises(ValidationError) as exc_info:
+        state.updated(retry_count=1)
+    assert exc_info.value.errors()[0]["loc"][0] == field
+
+    with pytest.raises(ValidationError):
+        AgentState.model_validate(state)
+
+    with pytest.raises(PydanticSerializationError, match="ValidationError"):
+        state.model_dump()
+    with pytest.raises(PydanticSerializationError, match="ValidationError"):
+        state.model_dump(mode="json", exclude={field})
+    with pytest.raises(PydanticSerializationError, match="ValidationError"):
+        state.model_dump_json()
 
 
 def test_unknown_fields_are_rejected():
