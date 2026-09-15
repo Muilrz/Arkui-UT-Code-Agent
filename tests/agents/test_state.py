@@ -21,6 +21,20 @@ def test_minimal_state_has_safe_defaults():
         "blocking_issue": None,
         "stop_reason": None,
         "retry_count": 0,
+        "task_memory": {
+            "target_component": None,
+            "target_files": [],
+            "target_classes": [],
+            "target_functions": [],
+            "changed_files": [],
+            "relevant_tests": [],
+            "fixtures": [],
+            "mocks": [],
+            "build_target": None,
+            "completed_steps": [],
+            "failed_attempts": [],
+            "important_decisions": [],
+        },
     }
 
 

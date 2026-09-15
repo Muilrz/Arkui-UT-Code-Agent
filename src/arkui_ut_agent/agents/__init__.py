@@ -4,7 +4,7 @@ import copy
 import importlib
 
 from arkui_ut_agent import Agent, Environment, Model
-from arkui_ut_agent.agents.state import AgentState, StopReason
+from arkui_ut_agent.agents.state import AgentState, StopReason, TaskMemory
 
 _AGENT_MAPPING = {
     "default": "arkui_ut_agent.agents.default.DefaultAgent",
@@ -29,4 +29,4 @@ def get_agent(model: Model, env: Environment, config: dict, *, default_type: str
     return agent_class(model, env, **config)
 
 
-__all__ = ["AgentState", "StopReason", "get_agent", "get_agent_class"]
+__all__ = ["AgentState", "StopReason", "TaskMemory", "get_agent", "get_agent_class"]

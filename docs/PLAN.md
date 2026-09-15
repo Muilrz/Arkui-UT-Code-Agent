@@ -54,8 +54,8 @@ Acceptance，不引入额外任务层级。实际开发从未完成 checklist �
 ## Stage 2 — AgentState 与 Memory
 
 - [x] 定义 `AgentState`。
-- [ ] 实现 Working Memory。
-- [ ] 实现 Task Memory。
+- [x] 实现 Working Memory。
+- [x] 实现 Task Memory。
 - [ ] 实现 Evidence Memory。
 - [ ] 定义 Evidence identity / dedup。
 - [ ] 关联 `step_id`、Tool Call 与 Evidence provenance。
