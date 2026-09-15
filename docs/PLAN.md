@@ -65,7 +65,8 @@ Acceptance，不引入额外任务层级。实际开发从未完成 checklist �
 
 已由 `tests/agents/test_state_integration.py` 验证现有 Agent Loop 的 producing step/provenance 链路、
 trajectory 完整 AgentState snapshot、仅 snapshot 独立恢复、模型推测不晋升、dedup 与 isolation。
-Stage 2 本地验收检查项已收口；当前 Slice 的人工验收状态见 `CURRENT_TASK.md`。未进入 Stage 3。
+Stage 2 全部 checklist 与 Acceptance 已满足，Windows + Ubuntu CI 及人工验收均通过，阶段已正式收口。
+实现提交与 CI Evidence 见 `CURRENT_TASK.md`。未进入 Stage 3。
 
 ## Stage 3 — Context Builder
 

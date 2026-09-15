@@ -34,8 +34,12 @@ git diff --check
 
 ## 5. Status / Blockers
 
-本地代码、Slice/相关回归及全量验证已完成，无 Blocker。提交推送后停止等待人工验收，
-不进入 Stage 3。CI 结果不作为本地测试结果冒报。
+Stage 2 / Slice 2D 已完成并验收通过，Stage 2 已正式收口，无 Blocker。
+实现提交 `d76ed643d639f0444241c83aade7e171973f9ae9` 已推送到 main；GitHub Windows + Ubuntu
+CI 均通过，用户已明确确认人工验收合格。保持本 Slice 作为刚完成的交接状态，不进入 Stage 3。
+
+CI Evidence：[Baseline CI run 34953429637](https://github.com/Muilrz/Arkui-UT-Code-Agent/actions/runs/34953429637)，
+`windows-latest / Python 3.11` 与 `ubuntu-latest / Python 3.11` 均为 completed / success。
 
 实际验证结果：
 
@@ -133,4 +137,5 @@ model，覆盖独立保存/恢复 Working、Task、Evidence Memory、producing s
 - [x] trajectory snapshot / 独立恢复 / legacy compatibility；
 - [x] 2A–2C mutation / isolation / serialization tests 保持通过；
 - [x] Slice、相关回归、全量 pytest、Ruff、diff check 通过；
+- [x] 实现提交已推送，GitHub Windows + Ubuntu CI 通过，人工验收通过；
 - [x] PLAN Stage 2 checklist / Acceptance 按真实结果收口，未进入 Stage 3。
