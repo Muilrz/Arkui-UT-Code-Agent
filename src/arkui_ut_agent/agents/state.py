@@ -1,5 +1,7 @@
 """Task-scoped execution state for the ArkUI UT agent control plane."""
 
+import hashlib
+import json
 from enum import Enum
 from typing import Annotated, Any
 
@@ -10,11 +12,22 @@ from pydantic import (
     JsonValue,
     SerializerFunctionWrapHandler,
     StringConstraints,
+    TypeAdapter,
+    field_validator,
     model_serializer,
+    model_validator,
 )
+
+from arkui_ut_agent.tools.contracts import Provenance
 
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
+_TEXT_ADAPTER = TypeAdapter(NonEmptyString)
+_METADATA_ADAPTER = TypeAdapter(dict[str, JsonValue], config=ConfigDict(allow_inf_nan=False))
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
 
 
 class StopReason(str, Enum):
@@ -70,12 +83,125 @@ class TaskMemory(BaseModel):
         return handler(validated)
 
 
+class Evidence(BaseModel):
+    """An explicitly supplied Tool-derived fact, not a model hypothesis.
+
+    Provenance must come from the producing Tool; validation checks completeness
+    and JSON compatibility, not authenticity or factual truth. Unknown locations
+    must be explicitly represented as None. step_id is a caller-provided trace label.
+    Content retains meaningful snippet whitespace; summary/source labels are trimmed.
+    No Observation-to-Evidence inference or automatic promotion is provided.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always", allow_inf_nan=False)
+
+    source: NonEmptyString
+    location: NonEmptyString | None
+    content: JsonValue = None
+    summary: NonEmptyString | None = None
+    provenance: list[Provenance] = Field(min_length=1)
+    step_id: NonEmptyString
+
+    @field_validator("provenance")
+    @classmethod
+    def _validate_provenance(cls, value: list[Provenance]) -> list[Provenance]:
+        # Stage 1 Provenance is mutable and allows Any metadata. Rebuild its existing
+        # schema from raw fields so mutated instances cannot bypass Evidence validation.
+        result = []
+        for item in value:
+            origin = Provenance.model_validate(dict(item))
+            result.append(Provenance(
+                source=_TEXT_ADAPTER.validate_python(origin.source),
+                location=None if origin.location is None else _TEXT_ADAPTER.validate_python(origin.location),
+                metadata=_METADATA_ADAPTER.validate_python(origin.metadata),
+            ))
+        return result
+
+    @field_validator("content")
+    @classmethod
+    def _validate_content(cls, value: JsonValue) -> JsonValue:
+        if (isinstance(value, str) and not value.strip()) or value == [] or value == {}:
+            raise ValueError("Evidence content must be nonempty when provided.")
+        return value
+
+    @model_validator(mode="after")
+    def _require_fact_payload(self) -> "Evidence":
+        if self.content is None and self.summary is None:
+            raise ValueError("Evidence requires content or summary.")
+        return self
+
+    @property
+    def identity(self) -> str:
+        """SHA-256 of all persisted fields except step_id; no cached/stored identity.
+
+        Mapping keys and provenance ordering are canonicalized. Content array order
+        remains significant; provenance multiplicity is retained. A repeated fact
+        from a different step has the same identity, without occurrence history.
+        """
+        validated = type(self).model_validate(dict(self))
+        payload = validated.model_dump(mode="json", exclude={"step_id"})
+        payload["provenance"] = sorted(payload["provenance"], key=_canonical_json)
+        return "sha256:" + hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+
+    def updated(self, **changes: Any) -> "Evidence":
+        """Return a fully validated isolated replacement snapshot."""
+        return type(self).model_validate({**dict(self), **changes})
+
+    @model_serializer(mode="wrap")
+    def _serialize_validated_evidence(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        validated = type(self).model_validate(dict(self))
+        return handler(validated)
+
+
+class EvidenceMemory(BaseModel):
+    """Task-local ordered facts, deduplicated by identity with first-record wins.
+
+    Construction, replacement updates and restoration share the same dedup rule.
+    add() returns (new isolated memory, inserted); duplicates retain the first full
+    record including step_id. No global store, fuzzy merge or occurrence log exists.
+    Raw container mutation/model_copy/model_construct are unsupported; all supported
+    updates and dumps revalidate every record before deduplicating or serializing.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, revalidate_instances="always")
+
+    records: list[Evidence] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _deduplicate(self) -> "EvidenceMemory":
+        records = []
+        seen = set()
+        for record in self.records:
+            identity = record.identity
+            if identity not in seen:
+                seen.add(identity)
+                records.append(record)
+        object.__setattr__(self, "records", records)
+        return self
+
+    def updated(self, **changes: Any) -> "EvidenceMemory":
+        """Replace complete fields after full validation and first-wins dedup."""
+        return type(self).model_validate({**dict(self), **changes})
+
+    def add(self, record: Evidence | dict[str, Any]) -> tuple["EvidenceMemory", bool]:
+        """Explicitly add a contract record; always return a new isolated snapshot."""
+        memory = self.updated()
+        candidate = Evidence.model_validate(record)
+        inserted = candidate.identity not in {item.identity for item in memory.records}
+        return memory.updated(records=[*memory.records, candidate]), inserted
+
+    @model_serializer(mode="wrap")
+    def _serialize_validated_memory(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        validated = type(self).model_validate(dict(self))
+        return handler(validated)
+
+
 class AgentState(BaseModel):
     """Minimal, serializable state for one task execution.
 
     ``current_plan`` and ``current_step`` deliberately remain opaque JSON values
     until Stage 4 defines the project-owned Plan and PlanStep contracts. Conversation
-    messages and evidence do not belong to this foundation model.
+    messages never belong to this state; evidence_memory holds explicit Tool facts.
 
     The existing execution fields are the sole Working Memory contract; task_memory
     separately holds caller-confirmed task information. No duplicate WorkingMemory
@@ -106,6 +232,7 @@ class AgentState(BaseModel):
     stop_reason: StopReason | None = None
     retry_count: NonNegativeInt = 0
     task_memory: TaskMemory = Field(default_factory=TaskMemory)
+    evidence_memory: EvidenceMemory = Field(default_factory=EvidenceMemory)
 
     def updated(self, **changes: Any) -> "AgentState":
         """Return an isolated snapshot after validating all existing and changed fields."""
@@ -118,4 +245,4 @@ class AgentState(BaseModel):
         return handler(validated)
 
 
-__all__ = ["AgentState", "StopReason", "TaskMemory"]
+__all__ = ["AgentState", "Evidence", "EvidenceMemory", "StopReason", "TaskMemory"]

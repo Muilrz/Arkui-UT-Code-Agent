@@ -56,10 +56,10 @@ Acceptance，不引入额外任务层级。实际开发从未完成 checklist �
 - [x] 定义 `AgentState`。
 - [x] 实现 Working Memory。
 - [x] 实现 Task Memory。
-- [ ] 实现 Evidence Memory。
-- [ ] 定义 Evidence identity / dedup。
+- [x] 实现 Evidence Memory。
+- [x] 定义 Evidence identity / dedup。
 - [ ] 关联 `step_id`、Tool Call 与 Evidence provenance。
-- [~] 添加 serialization / update tests。
+- [x] 添加 serialization / update tests。
 
 **Acceptance：** 不重放完整 chat history 也可以恢复当前任务的关键状态与 Evidence。
 

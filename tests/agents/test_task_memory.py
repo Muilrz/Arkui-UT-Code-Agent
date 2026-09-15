@@ -44,7 +44,7 @@ def test_working_memory_has_one_source_and_updates_do_not_promote_hypotheses():
         "goal", "current_plan", "current_step", "information_gap", "next_action",
         "open_questions", "hypotheses", "blocking_issue", "stop_reason", "retry_count",
     }
-    assert set(AgentState.model_fields) == working_fields | {"task_memory"}
+    assert set(AgentState.model_fields) == working_fields | {"task_memory", "evidence_memory"}
     assert not working_fields.intersection(TaskMemory.model_fields)
 
     state = AgentState(goal="task")

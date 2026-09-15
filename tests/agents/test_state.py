@@ -21,6 +21,7 @@ def test_minimal_state_has_safe_defaults():
         "blocking_issue": None,
         "stop_reason": None,
         "retry_count": 0,
+        "evidence_memory": {"records": []},
         "task_memory": {
             "target_component": None,
             "target_files": [],
