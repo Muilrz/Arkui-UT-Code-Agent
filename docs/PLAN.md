@@ -66,17 +66,16 @@ Acceptance，不引入额外任务层级。实际开发从未完成 checklist �
 已由 `tests/agents/test_state_integration.py` 验证现有 Agent Loop 的 producing step/provenance 链路、
 trajectory 完整 AgentState snapshot、仅 snapshot 独立恢复、模型推测不晋升、dedup 与 isolation。
 Stage 2 全部 checklist 与 Acceptance 已满足，Windows + Ubuntu CI 及人工验收均通过，阶段已正式收口。
-实现提交与 CI Evidence 见 `CURRENT_TASK.md`。未进入 Stage 3。
 
 ## Stage 3 — Context Builder
 
-- [ ] 定义 context sections 和预算策略。
+- [x] 定义 context sections 和预算策略。
 - [ ] 选择 relevant Task Memory。
 - [ ] 选择 current-step Evidence。
 - [ ] Build/Test diagnostics 优先。
 - [ ] 压缩历史失败。
 - [ ] Evidence / source snippet 去重。
-- [ ] deterministic context tests。
+- [~] deterministic context tests。
 
 **Acceptance：** Context 大小有界，同时保留下一步决策所需 Evidence。
 
