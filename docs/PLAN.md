@@ -70,9 +70,9 @@ Stage 2 全部 checklist 与 Acceptance 已满足，Windows + Ubuntu CI 及人�
 ## Stage 3 — Context Builder
 
 - [x] 定义 context sections 和预算策略。
-- [ ] 选择 relevant Task Memory。
-- [ ] 选择 current-step Evidence。
-- [ ] Build/Test diagnostics 优先。
+- [x] 选择 relevant Task Memory。
+- [x] 选择 current-step Evidence。
+- [x] Build/Test diagnostics 优先。
 - [ ] 压缩历史失败。
 - [ ] Evidence / source snippet 去重。
 - [~] deterministic context tests。

@@ -1,16 +1,17 @@
-"""Deterministic, bounded context construction from the existing AgentState contract.
+"""Deterministic, bounded selection from the existing AgentState contract.
 
-Slice 3A intentionally provides only section and character-budget foundations. It
-does not rank facts, prioritize diagnostics, summarize failures, select snippets,
-or wire the result into the runtime model call.
+The builder performs small task-local relevance and Evidence priority decisions. It
+does not summarize failures, compress source snippets, define planning contracts, or
+wire the result into the runtime model call.
 """
 
 import json
+import re
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from arkui_ut_agent.agents.state import AgentState
+from arkui_ut_agent.agents.state import AgentState, Evidence, TaskMemory
 
 ContextSectionName = Literal[
     "user_task",
@@ -29,6 +30,31 @@ CONTEXT_SECTION_ORDER: tuple[ContextSectionName, ...] = (
 )
 DEFAULT_CONTEXT_MAX_CHARS = 16_000
 TRUNCATION_MARKER = "…"
+_TOKEN_PATTERN = re.compile(r"[^\W_]+", flags=re.UNICODE)
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_IGNORED_RELEVANCE_TOKENS = frozenset({
+    "cc",
+    "class",
+    "component",
+    "cpp",
+    "file",
+    "fixture",
+    "function",
+    "id",
+    "mock",
+    "pattern",
+    "src",
+    "step",
+    "test",
+    "tests",
+})
+_TRUNCATION_ORDER: tuple[ContextSectionName, ...] = (
+    "task_memory",
+    "evidence_memory",
+    "working_memory",
+    "current_plan",
+    "user_task",
+)
 
 
 def _render_section(name: ContextSectionName, content: str) -> str:
@@ -98,10 +124,17 @@ class BuiltContext(BaseModel):
 class ContextBuilder:
     """Build bounded context solely from a validated Stage 2 AgentState snapshot.
 
-    Full section contents are canonical compact JSON. Budget pressure may replace a
-    JSON suffix with a visible truncation marker, removing suffixes from later
-    sections first while keeping every header visible. Selection inside Task/Evidence
-    Memory is deliberately deferred; this slice serializes their ordered contents as-is.
+    Task Memory values are retained when their lexical terms overlap the current
+    task/working focus; the two scalar anchors remain available when confirmed.
+    Evidence is ordered current-step first, then failing build/test diagnostics, then
+    lexically relevant facts. If none qualify, the latest fact is retained as a
+    deterministic fallback. Full selected records preserve the Stage 2 fields and add
+    their derived identity to the context view.
+
+    Full section contents are canonical compact JSON. Budget pressure truncates Task
+    Memory before the prioritized Evidence tail, then lower-level fallbacks, while
+    keeping every header visible. This is suffix fitting, not failure summarization or
+    source snippet compression.
     """
 
     def __init__(self, budget: ContextBudget | None = None) -> None:
@@ -128,8 +161,8 @@ class ContextBuilder:
             snapshot.goal,
             snapshot.current_plan,
             working_memory,
-            payload["task_memory"],
-            payload["evidence_memory"],
+            self._select_task_memory(snapshot).model_dump(mode="json"),
+            {"records": [self._evidence_view(record) for record in self._select_evidence(snapshot)]},
         )
         parts = [
             (name, self._canonical_json(value), False)
@@ -143,6 +176,104 @@ class ContextBuilder:
     def _canonical_json(value: object) -> str:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
 
+    @classmethod
+    def _focus_tokens(cls, state: AgentState) -> frozenset[str]:
+        return cls._tokens((
+            state.goal,
+            state.current_plan,
+            state.current_step,
+            state.information_gap,
+            state.next_action,
+            state.open_questions,
+            state.blocking_issue,
+        ))
+
+    @classmethod
+    def _tokens(cls, value: object) -> frozenset[str]:
+        tokens: set[str] = set()
+
+        def collect(item: object) -> None:
+            if isinstance(item, str):
+                separated = cls._separate_camel_case(item)
+                tokens.update(
+                    normalized
+                    for token in _TOKEN_PATTERN.findall(separated)
+                    if len(token) > 1
+                    and (normalized := token.casefold()) not in _IGNORED_RELEVANCE_TOKENS
+                )
+            elif isinstance(item, dict):
+                for nested in item.values():
+                    collect(nested)
+            elif isinstance(item, (list, tuple)):
+                for nested in item:
+                    collect(nested)
+
+        collect(value)
+        return frozenset(tokens)
+
+    @staticmethod
+    def _separate_camel_case(value: str) -> str:
+        return _CAMEL_BOUNDARY.sub(" ", value)
+
+    @classmethod
+    def _select_task_memory(cls, state: AgentState) -> TaskMemory:
+        focus = cls._focus_tokens(state)
+        memory = state.task_memory
+        selected: dict[str, object] = {
+            "target_component": memory.target_component,
+            "build_target": memory.build_target,
+        }
+        for field_name in (
+            "target_files",
+            "target_classes",
+            "target_functions",
+            "changed_files",
+            "relevant_tests",
+            "fixtures",
+            "mocks",
+            "completed_steps",
+            "failed_attempts",
+            "important_decisions",
+        ):
+            selected[field_name] = [
+                item for item in getattr(memory, field_name) if cls._tokens(item).intersection(focus)
+            ]
+        return TaskMemory.model_validate(selected)
+
+    @classmethod
+    def _select_evidence(cls, state: AgentState) -> tuple[Evidence, ...]:
+        focus = cls._focus_tokens(state)
+        current_step = state.current_step if isinstance(state.current_step, str) and state.current_step.strip() else None
+        candidates: list[tuple[int, int, Evidence]] = []
+        for index, record in enumerate(state.evidence_memory.records):
+            current = current_step is not None and record.step_id == current_step
+            diagnostic = cls._is_failing_build_or_test(record)
+            relevance_view = record.model_dump(mode="json", exclude={"step_id"})
+            relevant = bool(cls._tokens(relevance_view).intersection(focus))
+            if current or diagnostic or relevant:
+                priority = 0 if current else 1 if diagnostic else 2
+                candidates.append((priority, -index, record))
+
+        if not candidates and state.evidence_memory.records:
+            return (state.evidence_memory.records[-1],)
+        candidates.sort(key=lambda item: (item[0], item[1]))
+        return tuple(record for _, _, record in candidates)
+
+    @staticmethod
+    def _is_failing_build_or_test(record: Evidence) -> bool:
+        content = record.content
+        return (
+            record.source in {"build", "test"}
+            and isinstance(content, dict)
+            and content.get("success") is False
+            and isinstance(content.get("diagnostics"), list)
+            and bool(content["diagnostics"])
+        )
+
+    @staticmethod
+    def _evidence_view(record: Evidence) -> dict[str, object]:
+        return {"identity": record.identity, **record.model_dump(mode="json")}
+
     def _fit_budget(
         self,
         parts: list[tuple[ContextSectionName, str, bool]],
@@ -153,7 +284,9 @@ class ContextBuilder:
             return parts
 
         fitted = list(parts)
-        for index in range(len(fitted) - 1, -1, -1):
+        indexes = {name: index for index, (name, _, _) in enumerate(fitted)}
+        for name in _TRUNCATION_ORDER:
+            index = indexes[name]
             name, content, _ = fitted[index]
             reducible = len(content) - len(TRUNCATION_MARKER)
             if reducible <= 0:
