@@ -2,105 +2,119 @@
 
 ## 1. Slice
 
-**Stage 4 / Slice 4C — Control Decision & Diagnose**
+**Stage 4 / Slice 4D — Replanning & Repeat Detection**
 
-所属清单：`PLAN.md` 的 Stage 4。本文件已替换完成验收的 Stage 4 / Slice 4B 交接状态。
+所属清单：`PLAN.md` 的 Stage 4。本文件已替换完成验收的 Stage 4 / Slice 4C 交接状态。
 
 ## 2. Objective / Result
 
-已建立正式、可验证、可序列化的 runtime `ControlDecision`，支持：
+已实现真正的 Replanner、显式 Replan trigger，以及 deterministic：
 
 ```text
-retrieve / act / diagnose / replan / repair / verify / finish
+same Tool + same Input + same Observation
 ```
 
-decision 由 validated `kind` 和非空 `rationale` 组成；rationale 是 diagnosis/control state，不是
-confirmed Evidence。它进入 `AgentState.current_decision`、trajectory snapshot 和现有 bounded
-`ContextBuilder` Working Memory。
+检测。显式 `AgentState.current_decision.kind == replan` 或确认重复 triplet 后，Replan 在任何下一次普通
+action query 前执行。
 
-## 3. Diagnose Runtime Flow
+## 3. Replan Runtime Flow
 
 ```text
-normal action query
-→ allocate runtime step-N
-→ execute Tool
-→ normalize Observation
-→ record Tool execution / Evidence / provenance
-→ enqueue actual Tool record for Diagnose
-→ bounded control-only model call
-→ parse action.command as ControlDecision JSON data
-→ AgentState.current_decision = validated decision
-→ next normal action query sees decision through ContextBuilder
+current_decision = replan
+→ bounded Replan model input
+→ existing Model.query()
+→ parse normalized action.command as Plan JSON data
+→ validate complete Plan contract
+→ require new.revision == old.revision + 1
+→ atomically replace AgentState.current_plan
+→ clear consumed current_decision / next_action
+→ next normal action sees replacement Plan
 ```
 
-Diagnose 默认由 `AgentConfig.diagnose_after_observation=True` 启用。旧 Stage 2/3/baseline tests 在只验证
-原职责时显式关闭它；4C runtime 和 end-to-end tests 使用默认开启路径。
+Replan 复用现有 call/cost/time/format-error handling 和 Model abstraction。输入只包含固定 system/task
+prefix、现有最大 16,000 字符的 AgentState Context，以及至多一条 bounded runtime feedback；不重放完整
+trajectory。`active_step_id=null` 时 deterministic 选择 replacement Plan 的第一个 step。
 
-## 4. Model / Accounting / Error Contract
+## 4. Revision / Atomicity Contract
 
-- Diagnose 复用现有 `Model.query()`、`_check_query_limits()` 与 `_call_model()`，没有 provider-specific API；
-- input 只包含固定 system/task prefix、最大 16,000 字符的 AgentState Context、最大 4,000 字符的真实
-  Tool execution/Observation records，以及至多一条既有 bounded runtime feedback；不重放完整 history；
-- response 复用 normalized single-action transport，但 `action.command` 只作为 JSON 数据解析，永不传入
-  Environment；
-- successful、invalid-payload 和 Model-level `FormatError` 路径都由既有 call/cost accounting 精确计数；
-- invalid/ambiguous/non-JSON/invalid-kind/empty-rationale output 不写入 decision、不执行 action，并使用既有
-  consecutive FormatError 上限；pending Observation 保留供有界重试。
+- Initial Plan 从自身 validated revision 开始；
+- 每次成功 Replan 必须严格推进一个 revision：`expected = current.revision + 1`；
+- unchanged revision、跳号、invalid Plan、非 JSON 或 ambiguous action transport 均被拒绝；
+- replacement 只有完整 validation 与 revision check 都通过后才原子写入 AgentState；
+- invalid Replan 保留旧 Plan、`current_decision=replan` 和原 runtime state，供既有 bounded error retry；
+- Replan response 只作为数据解析，永不执行 Environment。
 
-## 5. Identity / Evidence Boundary
+## 5. Repeat Detection Rule
 
-- Diagnose 不调用 `_begin_step()`，response/feedback 只有 `phase=diagnose` 与 `source_step_ids`，没有新的
+每次真实 Tool Observation 完成 normalization、Evidence mapping 和 execution record 构造后，对以下字段做
+canonical JSON exact comparison：
+
+```text
+tool_name
++ semantic tool_input
++ structured observation
+```
+
+规则：
+
+- `step_id`、Evidence identity、dedup status、`repeat_of_step_id` 不参与比较；
+- provider transport correlation `tool_call_id` 不属于 semantic Tool input，比较时剔除；
+- Observation 缺失的 interrupted/invalid record 不足以确认完整 triplet，不触发；
+- Tool、Input、Observation 任一不同都不算重复；
+- Evidence dedup 与 repeat detection 独立：相同 Evidence 但 Input 不同仍不会触发 Replan；
+- 确认重复后，execution record 写入 `repeat_of_step_id`，并设置 deterministic `replan` decision；
+- pending Diagnose 被清除，Replan 优先于下一普通 action；
+- 同一 action batch 中确认第二个重复后，剩余第三个相同 action 不再执行。
+
+Replan 后仍重复且没有新 Evidence 时如何终止属于 Stage 4 / Slice 4E Stop Policy，本 Slice 不处理。
+
+## 6. Identity / Provenance Boundary
+
+- Replan 不调用 `_begin_step()`，response/feedback 只有 `phase=replan` 与 revision metadata，没有 runtime
   producing `step_id`；
-- `Plan.active_step_id` 仍只表示 plan-local identity；Diagnose 不修改 Plan，也不建立到 runtime step 的映射；
-- Tool execution、Evidence 与 Memory Update Event 继续共享原 runtime `step-N`；
-- model-produced rationale 只保存在 `current_decision`，不会进入 EvidenceMemory；
-- Evidence identity、first-wins dedup、原始 provenance 与 producing `step_id` 保持不变。
+- `PlanStep.id` / `Plan.active_step_id` 仍为 plan-local identity，不映射 runtime step；
+- 重复的第二次 Tool execution 仍保留自己的 runtime step record；Evidence first-wins dedup 继续保留第一条
+  Evidence 的 identity、provenance 与 producing step；
+- Replan 不产生 Tool execution、Observation、Evidence 或 Memory Update Event。
 
-## 6. 实际修改文件
+## 7. 实际修改文件
 
 ```text
-src/arkui_ut_agent/agents/control.py
-src/arkui_ut_agent/agents/state.py
-src/arkui_ut_agent/agents/context.py
+src/arkui_ut_agent/agents/planning.py
 src/arkui_ut_agent/agents/default.py
 src/arkui_ut_agent/agents/interactive.py
-src/arkui_ut_agent/agents/__init__.py
-tests/agents/test_control.py
+tests/agents/test_replanning.py
 tests/agents/test_diagnose.py
-tests/agents/test_state.py
-tests/agents/test_task_memory.py
 tests/agents/test_context_runtime.py
 tests/agents/test_state_integration.py
 tests/agents/test_default.py
 tests/agents/test_interactive.py
-tests/conftest.py
-tests/run/test_local.py
 docs/PLAN.md
 docs/CURRENT_TASK.md
 ```
 
-## 7. Tests / Evidence
+## 8. Tests / Evidence
 
-- `test_control.py` 覆盖七种 kind 的 validation/JSON serialization、invalid kind/empty rationale/extra field
-  拒绝，以及 AgentState restore 与 bounded Context；
-- `test_diagnose.py` 覆盖真实 Observation→Evidence→Diagnose→next context、control-only response 不执行、
-  call/cost accounting、invalid output、Model-level FormatError、无伪造 runtime step、Evidence identity/dedup/
-  provenance 不变、model rationale 不晋升为 Evidence；
-- `test_local.py` 的真实 deterministic flow 已更新为 planning→action→diagnose→submit；
-- `test_default.py`、`test_interactive.py`、Stage 2/3 regression fixtures 显式隔离其原有测试关注点。
+- `test_replanning.py` 验证 exact revision increment、null active-step selection、显式 decision 在 next action
+  前触发、replacement Plan 进入下一 bounded context、invalid atomicity、control-only response 不执行/不分配
+  step、完整 triplet detection、三种 partial-match 非重复边界、transport id 排除、同 batch 第三次调用跳过、
+  Evidence dedup/identity/provenance 独立；
+- 4C duplicate-Evidence 单一职责测试显式关闭 repeat detection，继续证明 Diagnose/Evidence 原 contract；
+- Stage 2/3 和 baseline fixtures 与 4B/4C 相同，显式关闭不属于各自测试目标的 control feature；
+- Initial Planning、Control Decision、Diagnose、InteractiveAgent 与全部 Agent regression 保持通过。
 
-## 8. Verification
+## 9. Verification
 
 ```text
-py -m pytest -q tests/agents/test_control.py tests/agents/test_diagnose.py tests/agents/test_initial_planning.py
-20 passed
+py -m pytest -q tests/agents/test_replanning.py tests/agents/test_planning.py tests/agents/test_initial_planning.py tests/agents/test_diagnose.py tests/agents/test_control.py
+45 passed
 
 py -m pytest -q tests/agents
-414 passed
+420 passed
 
 $env:Path = 'D:\Work\Python\Scripts;' + $env:Path
 py -m pytest -q
-766 passed, 4 skipped, 1 warning
+772 passed, 4 skipped, 1 warning
 
 py -m ruff check src tests
 All checks passed
@@ -109,15 +123,12 @@ git diff --check
 passed
 ```
 
-第一次未补 Scripts PATH 的全量运行得到 `764 passed, 2 failed, 4 skipped`：一项是 Windows 无法定位
-`arkui-ut-agent` console script；另一项暴露旧 end-to-end fixture 缺少 Diagnose response。fixture 随后改为
-真实 4C 调用序列，且在补入仓库既有 Windows Scripts PATH 后全量通过。warning 为既有 cache-control
-deprecated 参数提示。
+warning 为既有 cache-control deprecated 参数提示。
 
-## 9. Status / Scope
+## 10. Status / Scope
 
-Stage 4 / Slice 4C 实现与验证完成，当前无 Blocker。`PLAN.md` 只勾选 decision-state checklist；没有实现
-或勾选 Replanner、repeated detection、Stop Policy 或完整主循环接线。`retrieve` / `replan` / `repair` /
-`verify` / `finish` 目前只被持久化为 next-control intention，不触发未来 workflow。未引入 Router、Semantic、
-Graph、UT-specific classification 或完整 Trace framework；没有 scope creep。未修改 `SPEC.md` /
-`DECISIONS.md`，因为本 Slice 没有改变既有长期 identity、Evidence 或 bounded Context 边界。
+Stage 4 / Slice 4D 实现与验证完成，当前无 Blocker。`PLAN.md` 只勾选 repeated detection；Stop Policy 与
+完整主 Agent Loop 接线保持未开始。未实现 `no_new_evidence` / `repeated_failure` 终止、Router、Semantic、
+Graph、UT-specific classification 或完整 Trace framework；没有 scope creep，未开始 Slice 4E。未修改
+`SPEC.md` / `DECISIONS.md`，因为实现遵循既有 Replan、repeat rule、identity、Evidence 与 bounded Context
+长期边界。

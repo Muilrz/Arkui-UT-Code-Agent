@@ -24,6 +24,15 @@ Step ids must be unique. active_step_id may be null; the runtime will then selec
 Do not perform the task, execute tools, or add fields outside this Plan schema."""
 
 
+def _replanning_instruction(expected_revision: int) -> str:
+    return f"""Revise the current structured Plan using only the supplied bounded Agent State and Evidence.
+Use the existing single-action response transport, but do not return a shell command.
+The action's command string must contain only one compact Plan JSON object with revision exactly {expected_revision}:
+{{"revision":{expected_revision},"steps":[{{"id":"...","description":"..."}}],"active_step_id":"..."}}
+Step ids must be unique. active_step_id may be null; the runtime will then select the first step.
+Do not execute tools, emit a control decision, or add fields outside the Plan schema."""
+
+
 class PlanStep(BaseModel):
     """One stable, plan-local unit of work.
 
@@ -88,19 +97,34 @@ def _parse_initial_plan(message: dict[str, Any]) -> Plan:
     action. The command string is JSON data, not a shell command. A missing active
     step deterministically selects the first validated PlanStep.
     """
+    return _parse_plan_message(message, operation="Initial planning")
+
+
+def _parse_replan(message: dict[str, Any], current_plan: Plan) -> Plan:
+    """Validate an atomic replacement whose revision advances exactly once."""
+    current = Plan.model_validate(current_plan)
+    plan = _parse_plan_message(message, operation="Replan")
+    expected_revision = current.revision + 1
+    if plan.revision != expected_revision:
+        raise ValueError(f"Replan revision must be exactly {expected_revision}.")
+    return plan
+
+
+def _parse_plan_message(message: dict[str, Any], *, operation: str) -> Plan:
+    """Parse one normalized action transport without executing it."""
     extra = message.get("extra")
     actions = extra.get("actions") if isinstance(extra, dict) else None
     if not isinstance(actions, list) or len(actions) != 1:
-        raise ValueError("Initial planning requires exactly one Plan action transport.")
+        raise ValueError(f"{operation} requires exactly one Plan action transport.")
     action = actions[0]
     if not isinstance(action, dict) or not isinstance(action.get("command"), str):
-        raise ValueError("Initial planning requires a string Plan payload in action.command.")
+        raise ValueError(f"{operation} requires a string Plan payload in action.command.")
     try:
         payload = json.loads(action["command"])
     except json.JSONDecodeError as error:
-        raise ValueError("Initial planning action.command must be valid JSON.") from error
+        raise ValueError(f"{operation} action.command must be valid JSON.") from error
     if not isinstance(payload, dict):
-        raise ValueError("Initial planning JSON must be an object matching Plan.")
+        raise ValueError(f"{operation} JSON must be an object matching Plan.")
     plan = Plan.model_validate(payload)
     if plan.active_step_id is None:
         plan = plan.updated(active_step_id=plan.steps[0].id)

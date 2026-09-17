@@ -103,6 +103,10 @@ class InteractiveAgent(DefaultAgent):
         """Human mode remains model-free; model-driven modes inherit Diagnose."""
         return self.config.mode != "human" and super()._should_diagnose_pending_observations()
 
+    def _should_replan_current_plan(self) -> bool:
+        """Human mode remains model-free; model-driven modes inherit Replan."""
+        return self.config.mode != "human" and super()._should_replan_current_plan()
+
     @staticmethod
     def _stdin_is_interactive() -> bool:
         """Whether an interactive terminal is available to prompt the user.
@@ -140,6 +144,8 @@ class InteractiveAgent(DefaultAgent):
             self._ask_confirmation_or_interrupt(commands)
             for action in actions:
                 outputs.append(self._execute_action(action))
+                if self._should_replan_current_plan():
+                    break
         except Submitted as e:
             self._check_for_new_task_or_submit(e)
         finally:

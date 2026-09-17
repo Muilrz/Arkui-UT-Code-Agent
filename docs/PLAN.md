@@ -91,7 +91,7 @@ context-local 去重，以及普通历史压力下关键 Evidence 保留；`test
 - [x] 定义 `Plan` / `PlanStep`。
 - [x] Initial Planning。
 - [x] 决策状态：retrieve / act / diagnose / replan / repair / verify / finish。
-- [ ] repeated tool/input/observation detection。
+- [x] repeated tool/input/observation detection。
 - [ ] Stop Policy。
 - [ ] 将 Planner / Diagnose / Stop Policy 接入主 Agent Loop。
 

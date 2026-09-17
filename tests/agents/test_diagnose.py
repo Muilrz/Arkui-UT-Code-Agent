@@ -179,7 +179,7 @@ def test_diagnose_preserves_evidence_identity_dedup_and_producing_step_provenanc
     ])
     raw = {"output": "same fact", "returncode": 0, "exception_info": ""}
     env = FakeEnvironment([raw, raw])
-    agent = _agent(model, env, step_limit=3)
+    agent = _agent(model, env, step_limit=3, repeat_detection=False)
 
     assert agent.run("task")["exit_status"] == "LimitsExceeded"
 

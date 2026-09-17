@@ -65,6 +65,7 @@ def default_config():
         config = yaml.safe_load(f)
     config["agent"]["initial_planning"] = False
     config["agent"]["diagnose_after_observation"] = False
+    config["agent"]["repeat_detection"] = False
     return config["agent"]
 
 
@@ -76,6 +77,7 @@ def toolcall_config():
         config = yaml.safe_load(f)
     config["agent"]["initial_planning"] = False
     config["agent"]["diagnose_after_observation"] = False
+    config["agent"]["repeat_detection"] = False
     return config["agent"]
 
 

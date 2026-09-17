@@ -49,6 +49,7 @@ def _agent(model, env=None, **config):
         cost_limit=0,
         initial_planning=False,
         diagnose_after_observation=False,
+        repeat_detection=False,
         **config,
     )
 

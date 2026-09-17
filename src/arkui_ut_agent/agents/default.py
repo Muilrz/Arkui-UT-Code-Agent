@@ -14,9 +14,19 @@ from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 
 from arkui_ut_agent import Environment, Model, __version__
 from arkui_ut_agent.agents.context import ContextBuilder
-from arkui_ut_agent.agents.control import _DIAGNOSE_INSTRUCTION, _parse_control_decision
+from arkui_ut_agent.agents.control import (
+    _DIAGNOSE_INSTRUCTION,
+    ControlDecision,
+    DecisionKind,
+    _parse_control_decision,
+)
 from arkui_ut_agent.agents.integration import _evidence_from_tool_observation
-from arkui_ut_agent.agents.planning import _INITIAL_PLANNING_INSTRUCTION, _parse_initial_plan
+from arkui_ut_agent.agents.planning import (
+    _INITIAL_PLANNING_INSTRUCTION,
+    _parse_initial_plan,
+    _parse_replan,
+    _replanning_instruction,
+)
 from arkui_ut_agent.agents.state import AgentState, MemoryUpdateEvent
 from arkui_ut_agent.exceptions import FormatError, InterruptAgentFlow, LimitsExceeded, TimeExceeded
 from arkui_ut_agent.models.utils.content_string import get_content_string
@@ -29,7 +39,7 @@ _RUNTIME_FEEDBACK_MAX_CHARS = 2_000
 _RUNTIME_FEEDBACK_OMISSION_MARKER = "\n…[runtime feedback omitted]…\n"
 _DIAGNOSIS_RECORDS_MAX_CHARS = 4_000
 _DIAGNOSIS_RECORDS_OMISSION_MARKER = "\n…[tool observation records omitted]…\n"
-_CONTROL_ONLY_PHASES = frozenset({"initial_planning", "diagnose"})
+_CONTROL_ONLY_PHASES = frozenset({"initial_planning", "diagnose", "replan"})
 
 
 class AgentConfig(BaseModel):
@@ -51,6 +61,8 @@ class AgentConfig(BaseModel):
     """Create a structured Plan before the first model-driven action step."""
     diagnose_after_observation: bool = True
     """Create a control-only diagnosis after actual Tool Observations."""
+    repeat_detection: bool = True
+    """Trigger Replan after an exact repeated Tool/Input/Observation triplet."""
     output_path: Path | None = None
     """Save the trajectory to this path."""
 
@@ -131,6 +143,8 @@ class DefaultAgent:
             try:
                 if self._should_create_initial_plan():
                     self.create_initial_plan()
+                elif self._should_replan_current_plan():
+                    self.replan()
                 elif self._should_diagnose_pending_observations():
                     self.diagnose_pending_observations()
                 else:
@@ -200,6 +214,69 @@ class DefaultAgent:
         if self.state is None:  # The run setup establishes this invariant.
             raise RuntimeError("AgentState must exist before initial planning.")
         self.state = self.state.updated(current_plan=plan)
+
+    def _should_replan_current_plan(self) -> bool:
+        return bool(
+            self.state is not None
+            and self.state.current_plan is not None
+            and self.state.current_decision is not None
+            and self.state.current_decision.kind is DecisionKind.REPLAN
+        )
+
+    def replan(self) -> None:
+        """Atomically replace the current Plan without allocating a runtime step."""
+        if self.state is None or self.state.current_plan is None:
+            raise RuntimeError("A current Plan must exist before Replan.")
+        self._check_query_limits()
+        current_plan = self.state.current_plan
+        expected_revision = current_plan.revision + 1
+        try:
+            message = self._call_model(self._replanning_input_messages(expected_revision))
+        except FormatError as error:
+            for feedback in error.messages:
+                extra = feedback.setdefault("extra", {})
+                extra.setdefault("phase", "replan")
+                extra.setdefault("previous_revision", current_plan.revision)
+                extra.setdefault("expected_revision", expected_revision)
+            raise
+        extra = message.setdefault("extra", {})
+        extra["phase"] = "replan"
+        extra["previous_revision"] = current_plan.revision
+        extra["expected_revision"] = expected_revision
+        self.add_messages(message)
+        try:
+            plan = _parse_replan(message, current_plan)
+        except (TypeError, ValueError) as error:
+            feedback = self.model.format_message(
+                role="user",
+                content=f"Invalid replacement Plan: {error}",
+                extra={
+                    "interrupt_type": "FormatError",
+                    "phase": "replan",
+                    "previous_revision": current_plan.revision,
+                    "expected_revision": expected_revision,
+                },
+            )
+            raise FormatError(feedback) from error
+        self.state = self.state.updated(
+            current_plan=plan,
+            current_decision=None,
+            next_action=None,
+        )
+
+    def _replanning_input_messages(self, expected_revision: int) -> list[dict]:
+        """Build a bounded Plan-replacement view without trajectory replay."""
+        if self.state is None:
+            raise RuntimeError("AgentState must exist before Replan.")
+        context = self.context_builder.build(self.state).text
+        replanning_message = self.model.format_message(
+            role="user",
+            content=f"{_replanning_instruction(expected_revision)}\n\n{context}",
+        )
+        messages = [*copy.deepcopy(self.messages[:2]), replanning_message]
+        if feedback := self._latest_runtime_feedback():
+            messages.append(feedback)
+        return messages
 
     def _should_diagnose_pending_observations(self) -> bool:
         return bool(
@@ -369,7 +446,11 @@ class DefaultAgent:
 
     def execute_actions(self, message: dict) -> list[dict]:
         """Execute actions in message, add observation messages, return them."""
-        outputs = [self._execute_action(action) for action in message.get("extra", {}).get("actions", [])]
+        outputs = []
+        for action in message.get("extra", {}).get("actions", []):
+            outputs.append(self._execute_action(action))
+            if self._should_replan_current_plan():
+                break
         return self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
 
     def _begin_step(self) -> str:
@@ -403,6 +484,7 @@ class DefaultAgent:
             self.tool_executions.append({
                 "step_id": step_id, "tool_name": "run_command", "tool_input": tool_input,
                 "observation": None, "evidence_identity": None, "status": "interrupted",
+                "repeat_of_step_id": None,
             })
             raise
         if isinstance(output, Observation):
@@ -456,12 +538,56 @@ class DefaultAgent:
             self.logger.warning("Evidence skipped for %s: %s", step_id, status)
         execution_record = {
             "step_id": step_id, "tool_name": observation.tool_name, "tool_input": tool_input, "observation": recorded_observation,
-            "evidence_identity": identity, "status": status,
+            "evidence_identity": identity, "status": status, "repeat_of_step_id": None,
         }
+        repeated_record = self._find_repeated_execution(execution_record)
+        if repeated_record is not None:
+            execution_record["repeat_of_step_id"] = repeated_record["step_id"]
         self.tool_executions.append(execution_record)
-        if self.config.diagnose_after_observation:
+        if repeated_record is not None:
+            self.state = self.state.updated(current_decision=ControlDecision(
+                kind=DecisionKind.REPLAN,
+                rationale=(
+                    "Exact Tool/Input/Observation triplet repeated; revise the Plan before "
+                    "another normal action."
+                ),
+            ))
+            self._pending_diagnosis_records = []
+        elif self.config.diagnose_after_observation:
             self._pending_diagnosis_records.append(copy.deepcopy(execution_record))
         return recorded_observation
+
+    def _find_repeated_execution(self, candidate: dict) -> dict | None:
+        """Return the latest exact prior triplet, independent of Evidence dedup."""
+        if not self.config.repeat_detection:
+            return None
+        signature = self._execution_triplet_signature(candidate)
+        if signature is None:
+            return None
+        for previous in reversed(self.tool_executions):
+            if self._execution_triplet_signature(previous) == signature:
+                return previous
+        return None
+
+    @staticmethod
+    def _execution_triplet_signature(record: dict) -> str | None:
+        observation = record.get("observation")
+        if observation is None:
+            return None
+        tool_input = copy.deepcopy(record.get("tool_input"))
+        if isinstance(tool_input, dict):
+            tool_input.pop("tool_call_id", None)
+        return json.dumps(
+            {
+                "tool_name": record.get("tool_name"),
+                "tool_input": tool_input,
+                "observation": observation,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
 
     def serialize(self, *extra_dicts) -> dict:
         """Serialize agent state to a json-compatible nested dictionary for saving."""
