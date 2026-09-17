@@ -1,8 +1,8 @@
 """Deterministic, bounded selection from the existing AgentState contract.
 
-The builder performs small task-local relevance and Evidence priority decisions. It
-does not summarize failures, compress source snippets, define planning contracts, or
-wire the result into the runtime model call.
+The builder performs small task-local relevance, compression and Evidence priority
+decisions. It does not use LLM summarization, define planning contracts, or wire the
+result into the runtime model call.
 """
 
 import json
@@ -30,6 +30,16 @@ CONTEXT_SECTION_ORDER: tuple[ContextSectionName, ...] = (
 )
 DEFAULT_CONTEXT_MAX_CHARS = 16_000
 TRUNCATION_MARKER = "…"
+_CONTENT_OMISSION_MARKER = "\n…[context content omitted]…\n"
+_DUPLICATE_SNIPPET_MARKER = "…[duplicate source snippet omitted]…"
+_MAX_FAILURE_ATTEMPTS = 5
+_MAX_FAILURE_TEXT_CHARS = 240
+_MAX_HISTORICAL_FAILURE_EVIDENCE = 3
+_MAX_EXECUTION_OUTPUT_CHARS = 1_200
+_MAX_SOURCE_SNIPPET_CHARS = 1_200
+_MAX_SOURCE_SNIPPET_LINES = 40
+_MAX_RG_MATCHES = 20
+_MAX_RG_MATCH_TEXT_CHARS = 240
 _TOKEN_PATTERN = re.compile(r"[^\W_]+", flags=re.UNICODE)
 _CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _IGNORED_RELEVANCE_TOKENS = frozenset({
@@ -126,15 +136,19 @@ class ContextBuilder:
 
     Task Memory values are retained when their lexical terms overlap the current
     task/working focus; the two scalar anchors remain available when confirmed.
-    Evidence is ordered current-step first, then failing build/test diagnostics, then
-    lexically relevant facts. If none qualify, the latest fact is retained as a
-    deterministic fallback. Full selected records preserve the Stage 2 fields and add
-    their derived identity to the context view.
+    Evidence is ordered current-step first, then the latest failing build/test
+    diagnostics, then lexically relevant facts. If none qualify, the latest fact is
+    retained as a deterministic fallback. Full selected records preserve the Stage 2
+    fields and add their derived identity to the context view.
+
+    Relevant failure history is exact-deduplicated and bounded. Only the established
+    read_file and rg_search payloads receive narrow source controls: relevant line
+    windows, text/match limits and exact duplicate removal. These are context-view
+    transformations; stored Evidence and its identity remain unchanged.
 
     Full section contents are canonical compact JSON. Budget pressure truncates Task
     Memory before the prioritized Evidence tail, then lower-level fallbacks, while
-    keeping every header visible. This is suffix fitting, not failure summarization or
-    source snippet compression.
+    keeping every header visible.
     """
 
     def __init__(self, budget: ContextBudget | None = None) -> None:
@@ -162,7 +176,7 @@ class ContextBuilder:
             snapshot.current_plan,
             working_memory,
             self._select_task_memory(snapshot).model_dump(mode="json"),
-            {"records": [self._evidence_view(record) for record in self._select_evidence(snapshot)]},
+            {"records": self._evidence_views(self._select_evidence(snapshot), snapshot)},
         )
         parts = [
             (name, self._canonical_json(value), False)
@@ -235,29 +249,66 @@ class ContextBuilder:
             "failed_attempts",
             "important_decisions",
         ):
-            selected[field_name] = [
+            values = [
                 item for item in getattr(memory, field_name) if cls._tokens(item).intersection(focus)
             ]
+            selected[field_name] = cls._compress_failures(values) if field_name == "failed_attempts" else values
         return TaskMemory.model_validate(selected)
+
+    @classmethod
+    def _compress_failures(cls, failures: list[str]) -> list[str]:
+        grouped: dict[str, tuple[str, int]] = {}
+        for failure in reversed(failures):
+            normalized = " ".join(failure.split())
+            key = normalized.casefold()
+            if key in grouped:
+                representative, count = grouped[key]
+                grouped[key] = (representative, count + 1)
+            else:
+                grouped[key] = (normalized, 1)
+
+        selected = []
+        for text, count in list(grouped.values())[:_MAX_FAILURE_ATTEMPTS]:
+            suffix = f" [repeated {count} times]" if count > 1 else ""
+            bounded = cls._bound_text(
+                str(text),
+                _MAX_FAILURE_TEXT_CHARS - len(suffix),
+                "…[failure text omitted]…",
+            )
+            selected.append(bounded + suffix)
+        omitted = len(grouped) - len(selected)
+        if omitted:
+            selected.append(f"…[{omitted} older relevant failure(s) omitted]…")
+        return selected
 
     @classmethod
     def _select_evidence(cls, state: AgentState) -> tuple[Evidence, ...]:
         focus = cls._focus_tokens(state)
         current_step = state.current_step if isinstance(state.current_step, str) and state.current_step.strip() else None
-        candidates: list[tuple[int, int, Evidence]] = []
+        current_records: list[tuple[int, Evidence]] = []
+        diagnostic_records: list[tuple[int, Evidence]] = []
+        relevant_records: list[tuple[int, Evidence]] = []
         for index, record in enumerate(state.evidence_memory.records):
             current = current_step is not None and record.step_id == current_step
             diagnostic = cls._is_failing_build_or_test(record)
             relevance_view = record.model_dump(mode="json", exclude={"step_id"})
             relevant = bool(cls._tokens(relevance_view).intersection(focus))
-            if current or diagnostic or relevant:
-                priority = 0 if current else 1 if diagnostic else 2
-                candidates.append((priority, -index, record))
+            if current:
+                current_records.append((index, record))
+            elif diagnostic:
+                diagnostic_records.append((index, record))
+            elif relevant:
+                relevant_records.append((index, record))
 
-        if not candidates and state.evidence_memory.records:
+        selected = [record for _, record in sorted(current_records, reverse=True)]
+        selected.extend(
+            record
+            for _, record in sorted(diagnostic_records, reverse=True)[:_MAX_HISTORICAL_FAILURE_EVIDENCE]
+        )
+        selected.extend(record for _, record in sorted(relevant_records, reverse=True))
+        if not selected and state.evidence_memory.records:
             return (state.evidence_memory.records[-1],)
-        candidates.sort(key=lambda item: (item[0], item[1]))
-        return tuple(record for _, _, record in candidates)
+        return tuple(selected)
 
     @staticmethod
     def _is_failing_build_or_test(record: Evidence) -> bool:
@@ -270,9 +321,138 @@ class ContextBuilder:
             and bool(content["diagnostics"])
         )
 
+    @classmethod
+    def _evidence_views(cls, records: tuple[Evidence, ...], state: AgentState) -> list[dict[str, object]]:
+        focus = cls._focus_tokens(state)
+        seen_read_snippets: set[tuple[object, ...]] = set()
+        seen_rg_matches: set[tuple[object, ...]] = set()
+        return [
+            cls._evidence_view(record, focus, seen_read_snippets, seen_rg_matches)
+            for record in records
+        ]
+
+    @classmethod
+    def _evidence_view(
+        cls,
+        record: Evidence,
+        focus: frozenset[str],
+        seen_read_snippets: set[tuple[object, ...]],
+        seen_rg_matches: set[tuple[object, ...]],
+    ) -> dict[str, object]:
+        payload = record.model_dump(mode="json")
+        content = payload.get("content")
+        if isinstance(content, dict):
+            if record.source == "read_file":
+                cls._control_read_file(content, focus, seen_read_snippets)
+            elif record.source == "rg_search":
+                cls._control_rg_search(content, seen_rg_matches)
+            elif record.source in {"build", "test"} and content.get("success") is False:
+                cls._control_failure_output(content)
+        return {"identity": record.identity, **payload}
+
+    @classmethod
+    def _control_read_file(
+        cls,
+        content: dict[str, object],
+        focus: frozenset[str],
+        seen: set[tuple[object, ...]],
+    ) -> None:
+        data = content.get("data")
+        if not isinstance(data, dict) or not isinstance(data.get("content"), str):
+            return
+        source = data["content"]
+        key = (data.get("path"), data.get("start_line"), data.get("end_line"), source)
+        if key in seen:
+            data["content"] = _DUPLICATE_SNIPPET_MARKER
+            return
+        seen.add(key)
+        data["content"] = cls._select_source_lines(source, focus)
+
+    @classmethod
+    def _select_source_lines(cls, source: str, focus: frozenset[str]) -> str:
+        lines = source.splitlines(keepends=True)
+        if not lines:
+            return source
+        matching = [index for index, line in enumerate(lines) if cls._tokens(line).intersection(focus)]
+        if matching:
+            indexes = sorted({
+                candidate
+                for index in matching
+                for candidate in range(max(0, index - 1), min(len(lines), index + 2))
+            })
+        else:
+            half = _MAX_SOURCE_SNIPPET_LINES // 2
+            indexes = list(range(min(half, len(lines))))
+            indexes.extend(range(max(half, len(lines) - half), len(lines)))
+            indexes = sorted(set(indexes))
+        if len(indexes) > _MAX_SOURCE_SNIPPET_LINES:
+            half = _MAX_SOURCE_SNIPPET_LINES // 2
+            indexes = indexes[:half] + indexes[-half:]
+        selected = cls._join_line_ranges(lines, indexes)
+        return cls._bound_text(selected, _MAX_SOURCE_SNIPPET_CHARS, _CONTENT_OMISSION_MARKER)
+
     @staticmethod
-    def _evidence_view(record: Evidence) -> dict[str, object]:
-        return {"identity": record.identity, **record.model_dump(mode="json")}
+    def _join_line_ranges(lines: list[str], indexes: list[int]) -> str:
+        parts = []
+        previous = -2
+        for index in indexes:
+            if index != previous + 1 and parts:
+                parts.append(_CONTENT_OMISSION_MARKER)
+            parts.append(lines[index])
+            previous = index
+        return "".join(parts)
+
+    @classmethod
+    def _control_rg_search(
+        cls,
+        content: dict[str, object],
+        seen: set[tuple[object, ...]],
+    ) -> None:
+        data = content.get("data")
+        if not isinstance(data, dict) or not isinstance(data.get("matches"), list):
+            return
+        selected = []
+        omitted = False
+        for match in data["matches"]:
+            if not isinstance(match, dict) or not isinstance(match.get("text"), str):
+                continue
+            key = (match.get("path"), match.get("line"), match.get("column"), match["text"])
+            if key in seen:
+                omitted = True
+                continue
+            if len(seen) == _MAX_RG_MATCHES:
+                omitted = True
+                continue
+            seen.add(key)
+            selected_match = dict(match)
+            selected_match["text"] = cls._bound_text(
+                match["text"],
+                _MAX_RG_MATCH_TEXT_CHARS,
+                "…[match text omitted]…",
+            )
+            selected.append(selected_match)
+        data["matches"] = selected
+        data["count"] = len(selected)
+        data["truncated"] = bool(data.get("truncated")) or omitted
+
+    @classmethod
+    def _control_failure_output(cls, content: dict[str, object]) -> None:
+        data = content.get("data")
+        if isinstance(data, dict) and isinstance(data.get("output"), str):
+            data["output"] = cls._bound_text(
+                data["output"],
+                _MAX_EXECUTION_OUTPUT_CHARS,
+                _CONTENT_OMISSION_MARKER,
+            )
+
+    @staticmethod
+    def _bound_text(value: str, limit: int, marker: str) -> str:
+        if len(value) <= limit:
+            return value
+        available = limit - len(marker)
+        head = (available + 1) // 2
+        tail = available - head
+        return value[:head] + marker + value[-tail:] if tail else value[:head] + marker
 
     def _fit_budget(
         self,

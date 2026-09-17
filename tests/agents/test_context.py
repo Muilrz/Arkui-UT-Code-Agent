@@ -54,6 +54,28 @@ def _full_state() -> AgentState:
     )
 
 
+def _read_file_evidence(summary: str, *, step_id: str, path: str, source_text: str) -> Evidence:
+    line_count = len(source_text.splitlines())
+    return Evidence(
+        source="read_file",
+        location=path,
+        content={
+            "success": True,
+            "data": {
+                "path": path,
+                "content": source_text,
+                "start_line": 1,
+                "end_line": line_count,
+                "total_lines": line_count,
+            },
+            "diagnostics": [],
+        },
+        summary=summary,
+        provenance=[Provenance(source="read_file", location=path, metadata={"start_line": 1})],
+        step_id=step_id,
+    )
+
+
 def test_builder_uses_existing_state_and_memory_contract_in_fixed_section_order():
     state = _full_state()
 
@@ -276,3 +298,129 @@ def test_priority_evidence_is_not_displaced_by_ordinary_history_under_budget():
     assert '"command":"run unique_text_test"' in evidence_section.content
     assert "unique-current-assertion-failure" in evidence_section.content
     assert f'"identity":"{history[0].identity}"' not in evidence_section.content
+
+
+def test_relevant_failure_history_is_deduplicated_bounded_and_newest_first():
+    failures = [f"Text failure {index}" for index in range(10)]
+    failures.extend(["Text repeated failure", " Text  repeated failure ", "Text repeated failure"])
+    state = AgentState(
+        goal="Repair Text behavior",
+        task_memory=TaskMemory(failed_attempts=failures),
+    )
+    stored_failures = list(state.task_memory.failed_attempts)
+
+    selected = json.loads(ContextBuilder().build(state).sections[3].content)["failed_attempts"]
+
+    assert selected == [
+        "Text repeated failure [repeated 3 times]",
+        "Text failure 9",
+        "Text failure 8",
+        "Text failure 7",
+        "Text failure 6",
+        "…[6 older relevant failure(s) omitted]…",
+    ]
+    assert all(len(item) <= 240 for item in selected)
+    assert state.task_memory.failed_attempts == stored_failures
+
+
+def test_historical_failure_evidence_is_limited_and_outputs_are_bounded():
+    failures = []
+    for index in range(6):
+        failures.append(Evidence(
+            source="build",
+            location=".",
+            content={
+                "success": False,
+                "data": {"output": f"failure-{index}-" + "x" * 2_000},
+                "diagnostics": [{"code": "command_failed", "message": f"build failure {index}"}],
+            },
+            summary=f"Build failure {index}",
+            provenance=[Provenance(source="build", location=".", metadata={"command": f"build-{index}"})],
+            step_id=f"step-{index}",
+        ))
+    state = AgentState(
+        goal="Repair Text",
+        current_step="step-0",
+        evidence_memory=EvidenceMemory(records=failures),
+    )
+
+    selected = json.loads(ContextBuilder().build(state).sections[4].content)["records"]
+
+    assert [record["step_id"] for record in selected] == ["step-0", "step-5", "step-4", "step-3"]
+    assert [record["identity"] for record in selected] == [
+        failures[0].identity,
+        failures[5].identity,
+        failures[4].identity,
+        failures[3].identity,
+    ]
+    assert all(len(record["content"]["data"]["output"]) <= 1_200 for record in selected)
+    assert all("…[context content omitted]…" in record["content"]["data"]["output"] for record in selected)
+    assert selected[0]["content"]["diagnostics"] == failures[0].content["diagnostics"]
+
+
+def test_read_file_snippets_are_relevance_selected_bounded_and_exact_deduplicated():
+    source = "".join(
+        f"TextPattern relevant line {index} " + "implementation " * 12 + "\n"
+        for index in range(100)
+    )
+    first = _read_file_evidence("First Text source", step_id="step-old", path="src/text.cc", source_text=source)
+    duplicate = _read_file_evidence(
+        "Current duplicate Text source",
+        step_id="step-current",
+        path="src/text.cc",
+        source_text=source,
+    )
+    state = AgentState(
+        goal="Repair TextPattern",
+        current_step="step-current",
+        evidence_memory=EvidenceMemory(records=[first, duplicate]),
+    )
+
+    selected = json.loads(ContextBuilder().build(state).sections[4].content)["records"]
+    shown = selected[0]["content"]["data"]["content"]
+
+    assert [record["identity"] for record in selected] == [duplicate.identity, first.identity]
+    assert len(shown) <= 1_200
+    assert "TextPattern relevant line 0" in shown
+    assert "TextPattern relevant line 99" in shown
+    assert "…[context content omitted]…" in shown
+    assert selected[1]["content"]["data"]["content"] == "…[duplicate source snippet omitted]…"
+    assert duplicate.content["data"]["content"] == source
+
+
+def test_rg_matches_are_exact_deduplicated_and_bounded_without_changing_evidence():
+    matches = [
+        {
+            "path": f"src/file_{index}.cc",
+            "line": index + 1,
+            "column": 1,
+            "text": f"Target match {index} " + "source " * 80,
+        }
+        for index in range(25)
+    ]
+    matches.append(dict(matches[0]))
+    evidence = Evidence(
+        source="rg_search",
+        location=".",
+        content={
+            "success": True,
+            "data": {"matches": matches, "count": len(matches), "truncated": False},
+            "diagnostics": [],
+        },
+        summary="Found Target matches",
+        provenance=[Provenance(source="rg_search", location=".", metadata={"pattern": "Target"})],
+        step_id="step-search",
+    )
+    state = AgentState(goal="Find Target implementation", evidence_memory=EvidenceMemory(records=[evidence]))
+
+    selected = json.loads(ContextBuilder().build(state).sections[4].content)["records"][0]
+    data = selected["content"]["data"]
+
+    assert selected["identity"] == evidence.identity
+    assert data["count"] == 20
+    assert len(data["matches"]) == 20
+    assert data["truncated"] is True
+    assert len({(item["path"], item["line"], item["column"], item["text"]) for item in data["matches"]}) == 20
+    assert all(len(item["text"]) <= 240 for item in data["matches"])
+    assert all("…[match text omitted]…" in item["text"] for item in data["matches"])
+    assert len(evidence.content["data"]["matches"]) == 26

@@ -73,11 +73,16 @@ Stage 2 全部 checklist 与 Acceptance 已满足，Windows + Ubuntu CI 及人�
 - [x] 选择 relevant Task Memory。
 - [x] 选择 current-step Evidence。
 - [x] Build/Test diagnostics 优先。
-- [ ] 压缩历史失败。
-- [ ] Evidence / source snippet 去重。
-- [~] deterministic context tests。
+- [x] 压缩历史失败。
+- [x] Evidence / source snippet 去重。
+- [x] deterministic context tests。
 
 **Acceptance：** Context 大小有界，同时保留下一步决策所需 Evidence。
+
+已由 `tests/agents/test_context.py` 验证固定 section / hard budget、relevant Task Memory、current-step
+Evidence、Build/Test diagnostics、历史失败压缩、真实 `read_file` / `rg_search` payload 的 snippet 控制与
+context-local 去重，以及普通历史压力下关键 Evidence 保留。Stage 3 checklist 与 Acceptance 已满足；
+Context Builder 的主 Agent Loop 接线仍属于 Stage 4。
 
 ## Stage 4 — Planning 与 Control Loop
 
