@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 from pydantic_core import PydanticSerializationError
 
-from arkui_ut_agent.agents import AgentState, Evidence, MemoryUpdateEvent, TaskMemory
+from arkui_ut_agent.agents import AgentState, Evidence, MemoryUpdateEvent, Plan, PlanStep, TaskMemory
 from arkui_ut_agent.agents.default import DefaultAgent
 from arkui_ut_agent.agents.integration import _evidence_from_tool_observation
 from arkui_ut_agent.agents.interactive import InteractiveAgent
@@ -352,7 +352,14 @@ def test_stage_two_acceptance_save_restore_all_memory_without_any_messages(tmp_p
     observation = tool_observation()
     agent = agent_for([[{"command": "read"}]], FakeEnvironment([observation]))
     parent = AgentState(
-        goal="Add Text UT", current_plan={"steps": ["inspect", "verify"]},
+        goal="Add Text UT",
+        current_plan=Plan(
+            steps=(
+                PlanStep(id="inspect", description="Inspect Text implementation"),
+                PlanStep(id="verify", description="Verify the Text unit test"),
+            ),
+            active_step_id="inspect",
+        ),
         hypotheses=["Unconfirmed guess"], open_questions=["Which branch?"], information_gap="coverage",
         task_memory=TaskMemory(target_component="Text", target_files=["src/text.cc"],
                                relevant_tests=["TextTest.CoversProperty"], build_target="text_test"),
@@ -360,6 +367,7 @@ def test_stage_two_acceptance_save_restore_all_memory_without_any_messages(tmp_p
     agent.state = parent
     agent.step()
     assert parent.current_step is None and parent.evidence_memory.records == []
+    assert parent.current_plan.active_step_id == agent.state.current_plan.active_step_id == "inspect"
     assert agent.state.task_memory is not parent.task_memory
     assert agent.state.hypotheses == parent.hypotheses
     path = tmp_path / "trajectory.json"

@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 from pydantic_core import PydanticSerializationError
 
-from arkui_ut_agent.agents import AgentState, StopReason
+from arkui_ut_agent.agents import AgentState, Plan, PlanStep, StopReason
 
 
 def test_minimal_state_has_safe_defaults():
@@ -39,11 +39,19 @@ def test_minimal_state_has_safe_defaults():
     }
 
 
-def test_full_state_accepts_opaque_json_plan_and_step():
+def test_full_state_accepts_structured_plan_and_runtime_step():
     state = AgentState(
         goal="Repair the failing unit test",
-        current_plan={"revision": 1, "steps": ["locate", "edit", "verify"]},
-        current_step={"index": 1, "label": "edit"},
+        current_plan=Plan(
+            revision=1,
+            steps=(
+                PlanStep(id="locate", description="Locate the relevant test"),
+                PlanStep(id="edit", description="Edit the unit test"),
+                PlanStep(id="verify", description="Run the focused target"),
+            ),
+            active_step_id="edit",
+        ),
+        current_step="step-2",
         information_gap="The relevant fixture is not known",
         next_action="Search existing tests",
         open_questions=["Which fixture owns the mock?"],
@@ -53,8 +61,8 @@ def test_full_state_accepts_opaque_json_plan_and_step():
         retry_count=2,
     )
 
-    assert state.current_plan == {"revision": 1, "steps": ["locate", "edit", "verify"]}
-    assert state.current_step == {"index": 1, "label": "edit"}
+    assert state.current_plan.active_step_id == "edit"
+    assert state.current_step == "step-2"
     assert state.stop_reason is StopReason.NO_NEW_EVIDENCE
     assert state.retry_count == 2
 
@@ -78,7 +86,7 @@ def test_updates_validate_a_new_isolated_snapshot():
         retry_count=1,
         stop_reason=StopReason.REPEATED_FAILURE,
         open_questions=["Which test target?"],
-        current_plan={"steps": ["verify"]},
+        current_plan=Plan(steps=(PlanStep(id="verify", description="Run the focused test"),)),
     )
 
     assert updated.next_action == "Run the focused test"
@@ -91,9 +99,8 @@ def test_updates_validate_a_new_isolated_snapshot():
 
     copied = updated.updated()
     copied.open_questions.append("copy only")
-    copied.current_plan["steps"].append("copy only")
     assert updated.open_questions == ["Which test target?"]
-    assert updated.current_plan == {"steps": ["verify"]}
+    assert updated.current_plan == Plan(steps=(PlanStep(id="verify", description="Run the focused test"),))
 
 
 @pytest.mark.parametrize(
@@ -140,8 +147,6 @@ def test_field_assignment_is_not_a_supported_update():
     [
         ("open_questions", ["known question"], ""),
         ("hypotheses", ["unconfirmed idea"], "   "),
-        ("current_plan", {"items": []}, object()),
-        ("current_step", {"items": []}, float("nan")),
     ],
 )
 def test_in_place_mutation_is_rejected_at_update_and_serialization_boundaries(field, initial, invalid_item):
@@ -176,8 +181,11 @@ def test_unknown_fields_are_rejected():
 def test_serialization_and_deserialization_do_not_need_messages():
     state = AgentState(
         goal="task",
-        current_plan=["inspect", "verify"],
-        current_step="inspect",
+        current_plan=Plan(steps=(
+            PlanStep(id="inspect", description="Inspect the implementation"),
+            PlanStep(id="verify", description="Run the focused test"),
+        ), active_step_id="inspect"),
+        current_step="step-1",
         open_questions=["Where is the fixture?"],
         stop_reason=StopReason.TOOL_UNAVAILABLE,
         retry_count=1,
@@ -194,8 +202,12 @@ def test_serialization_and_deserialization_do_not_need_messages():
 def test_json_round_trip_preserves_full_state():
     state = AgentState(
         goal="task",
-        current_plan={"steps": [{"id": "inspect"}]},
-        current_step={"id": "inspect"},
+        current_plan=Plan(
+            revision=2,
+            steps=(PlanStep(id="inspect", description="Inspect the implementation"),),
+            active_step_id="inspect",
+        ),
+        current_step="step-3",
         next_action="Read the implementation",
         hypotheses=["The branch lacks coverage"],
         stop_reason=StopReason.SUCCESS,

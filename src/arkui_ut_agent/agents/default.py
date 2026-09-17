@@ -225,7 +225,8 @@ class DefaultAgent:
 
         Limit checks do not allocate steps. Human queries use this same boundary;
         n_calls remains model-call accounting, not a fabricated human model call.
-        current_step stays an opaque label, not a Planner schema.
+        current_step remains the runtime producing-step label. PlanStep selection is
+        represented separately by Plan.active_step_id.
         """
         step_id = f"step-{self._step_count + 1}"
         state = self.state if self.state is not None else AgentState(goal="Unspecified task")

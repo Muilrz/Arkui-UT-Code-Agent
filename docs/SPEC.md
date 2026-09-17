@@ -72,7 +72,28 @@ blocking_issue
 stop/retry state
 ```
 
-### 3.1 Local Runtime Shell Contract
+### 3.1 Planning 与 Execution Step Identity
+
+Planning state 使用项目自己的 structured `Plan` / `PlanStep`：
+
+```text
+Plan
+├── revision
+├── ordered PlanStep collection
+└── active_step_id
+
+PlanStep
+├── id
+└── description
+```
+
+`PlanStep.id` / `Plan.active_step_id` 只表示 Plan 内部的 planning identity。`AgentState.current_step`
+表示 runtime producing step（例如 `step-1`），并继续关联 Tool execution、Evidence `step_id`、
+Memory Update Event 和 ContextBuilder 的 current-step Evidence 优先级。两套 identity 不得隐式混用或映射。
+
+该 data contract 不规定未来 Planner 的 prompt schema、模型输出协议或 control decision。
+
+### 3.2 Local Runtime Shell Contract
 
 Local runtime 必须通过 shell backend 隔离平台差异：
 

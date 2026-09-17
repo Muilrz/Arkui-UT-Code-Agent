@@ -11,6 +11,8 @@ from arkui_ut_agent.agents import (
     ContextBuilder,
     Evidence,
     EvidenceMemory,
+    Plan,
+    PlanStep,
     TaskMemory,
 )
 from arkui_ut_agent.tools import Provenance
@@ -37,8 +39,15 @@ def _evidence(
 def _full_state() -> AgentState:
     return AgentState(
         goal="Add an ArkUI Text unit test",
-        current_plan={"revision": 2, "steps": ["inspect", "verify"]},
-        current_step={"index": 0, "label": "inspect"},
+        current_plan=Plan(
+            revision=2,
+            steps=(
+                PlanStep(id="inspect", description="Inspect Text implementation"),
+                PlanStep(id="verify", description="Verify the Text unit test"),
+            ),
+            active_step_id="inspect",
+        ),
+        current_step="step-1",
         information_gap="Fixture is unknown",
         next_action="Read the existing tests",
         open_questions=["Which fixture owns the mock?"],
@@ -85,7 +94,7 @@ def test_builder_uses_existing_state_and_memory_contract_in_fixed_section_order(
     assert all(section.truncated is False for section in context.sections)
     contents = {section.name: json.loads(section.content) for section in context.sections}
     assert contents["user_task"] == state.goal
-    assert contents["current_plan"] == state.current_plan
+    assert contents["current_plan"] == state.current_plan.model_dump(mode="json")
     assert contents["working_memory"]["current_step"] == state.current_step
     assert contents["working_memory"]["next_action"] == state.next_action
     assert contents["task_memory"] == state.task_memory.model_dump(mode="json")
@@ -99,10 +108,10 @@ def test_builder_uses_existing_state_and_memory_contract_in_fixed_section_order(
     assert context.text.index("## task_memory") < context.text.index("## evidence_memory")
 
 
-def test_builder_is_deterministic_and_does_not_interpret_opaque_plan_or_step():
+def test_builder_is_deterministic_with_structured_plan_and_runtime_step():
     state = _full_state().updated(
-        current_plan={"z": [3, 2, 1], "a": {"opaque": True}},
-        current_step=["also", {"opaque": 1}],
+        current_plan=_full_state().current_plan.updated(active_step_id="verify"),
+        current_step="step-7",
     )
     builder = ContextBuilder()
 
@@ -111,7 +120,7 @@ def test_builder_is_deterministic_and_does_not_interpret_opaque_plan_or_step():
 
     assert first == second
     assert first.text == second.text
-    assert json.loads(first.sections[1].content) == state.current_plan
+    assert json.loads(first.sections[1].content) == state.current_plan.model_dump(mode="json")
     assert json.loads(first.sections[2].content)["current_step"] == state.current_step
 
 
@@ -228,7 +237,7 @@ def test_evidence_priority_preserves_identity_step_and_provenance():
     assert all(record["identity"] != irrelevant.identity for record in selected)
 
 
-def test_opaque_non_string_current_step_is_not_interpreted_as_step_identity():
+def test_plan_step_id_is_not_interpreted_as_runtime_evidence_step_identity():
     nested_step = _evidence(
         "Unrelated old fact",
         step_id="step-nested",
@@ -243,7 +252,11 @@ def test_opaque_non_string_current_step_is_not_interpreted_as_step_identity():
     )
     state = AgentState(
         goal="Repair TextPattern",
-        current_step={"id": "step-nested"},
+        current_plan=Plan(
+            steps=(PlanStep(id="step-nested", description="Inspect TextPattern implementation"),),
+            active_step_id="step-nested",
+        ),
+        current_step="step-missing",
         evidence_memory=EvidenceMemory(records=[nested_step, latest]),
     )
 

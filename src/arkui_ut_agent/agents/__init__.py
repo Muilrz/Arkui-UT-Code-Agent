@@ -13,6 +13,7 @@ from arkui_ut_agent.agents.context import (
     ContextBuilder,
     ContextSection,
 )
+from arkui_ut_agent.agents.planning import Plan, PlanStep
 from arkui_ut_agent.agents.state import AgentState, Evidence, EvidenceMemory, MemoryUpdateEvent, StopReason, TaskMemory
 
 _AGENT_MAPPING = {
@@ -50,6 +51,8 @@ __all__ = [
     "Evidence",
     "EvidenceMemory",
     "MemoryUpdateEvent",
+    "Plan",
+    "PlanStep",
     "StopReason",
     "TaskMemory",
     "get_agent",

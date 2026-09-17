@@ -173,3 +173,16 @@ Bash 不可用时回退 POSIX sh。Agent prompt 接收 OS、backend 和 dialect 
 
 **Reason：** shell 语法属于执行环境契约。显式 backend 能统一 cwd、env、输出、返回码和 timeout 行为，同时避免
 依赖 `shell=True` 的平台隐式选择，也避免不可靠的 Bash→PowerShell 文本改写。
+
+---
+
+## D-014 — Planning Identity 与 Runtime Producing-step Identity 分离
+
+**Status：accepted**
+
+**Decision：** `PlanStep.id` 与 `Plan.active_step_id` 只在 structured Plan 内标识 planning step；
+`AgentState.current_step` 继续表示 runtime producing step，并作为 Tool execution、Evidence `step_id`、
+Memory Update Event 与 ContextBuilder current-step Evidence priority 的关联标识。两者不做隐式映射。
+
+**Reason：** 一个 planning step 可以跨越多次 model/tool execution，而一次 runtime step 也只是该次实际
+Evidence 的 provenance 边界。复用同一个 id 会破坏 Stage 2 已验证的来源链，并使 Plan update 与执行记录混淆。

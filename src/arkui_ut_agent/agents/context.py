@@ -1,8 +1,7 @@
 """Deterministic, bounded selection from the existing AgentState contract.
 
 The builder performs small task-local relevance, compression and Evidence priority
-decisions. It does not use LLM summarization, define planning contracts, or wire the
-result into the runtime model call.
+decisions. It does not use LLM summarization or implement planning behavior.
 """
 
 import json
@@ -132,7 +131,7 @@ class BuiltContext(BaseModel):
 
 
 class ContextBuilder:
-    """Build bounded context solely from a validated Stage 2 AgentState snapshot.
+    """Build bounded context solely from a validated AgentState snapshot.
 
     Task Memory values are retained when their lexical terms overlap the current
     task/working focus; the two scalar anchors remain available when confirmed.
@@ -173,7 +172,7 @@ class ContextBuilder:
         }
         section_values = (
             snapshot.goal,
-            snapshot.current_plan,
+            payload["current_plan"],
             working_memory,
             self._select_task_memory(snapshot).model_dump(mode="json"),
             {"records": self._evidence_views(self._select_evidence(snapshot), snapshot)},
@@ -194,7 +193,7 @@ class ContextBuilder:
     def _focus_tokens(cls, state: AgentState) -> frozenset[str]:
         return cls._tokens((
             state.goal,
-            state.current_plan,
+            None if state.current_plan is None else state.current_plan.model_dump(mode="json"),
             state.current_step,
             state.information_gap,
             state.next_action,
@@ -284,7 +283,7 @@ class ContextBuilder:
     @classmethod
     def _select_evidence(cls, state: AgentState) -> tuple[Evidence, ...]:
         focus = cls._focus_tokens(state)
-        current_step = state.current_step if isinstance(state.current_step, str) and state.current_step.strip() else None
+        current_step = state.current_step
         current_records: list[tuple[int, Evidence]] = []
         diagnostic_records: list[tuple[int, Evidence]] = []
         relevant_records: list[tuple[int, Evidence]] = []

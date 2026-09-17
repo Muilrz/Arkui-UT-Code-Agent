@@ -18,6 +18,7 @@ from pydantic import (
     model_validator,
 )
 
+from arkui_ut_agent.agents.planning import Plan
 from arkui_ut_agent.tools.contracts import Provenance
 
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -218,9 +219,11 @@ class MemoryUpdateEvent(BaseModel):
 class AgentState(BaseModel):
     """Minimal, serializable state for one task execution.
 
-    ``current_plan`` and ``current_step`` deliberately remain opaque JSON values
-    until Stage 4 defines the project-owned Plan and PlanStep contracts. Conversation
-    messages never belong to this state; evidence_memory holds explicit Tool facts.
+    ``current_plan`` is the project-owned planning snapshot. ``current_step`` is a
+    runtime producing-step label (for example ``step-1``), not a PlanStep id; Tool
+    executions, Evidence and MemoryUpdateEvent continue to share that runtime label.
+    Conversation messages never belong to this state; evidence_memory holds explicit
+    Tool facts.
 
     The existing execution fields are the sole Working Memory contract; task_memory
     separately holds caller-confirmed task information. No duplicate WorkingMemory
@@ -241,8 +244,8 @@ class AgentState(BaseModel):
     )
 
     goal: NonEmptyString
-    current_plan: JsonValue = None
-    current_step: JsonValue = None
+    current_plan: Plan | None = None
+    current_step: NonEmptyString | None = None
     information_gap: NonEmptyString | None = None
     next_action: NonEmptyString | None = None
     open_questions: list[NonEmptyString] = Field(default_factory=list)

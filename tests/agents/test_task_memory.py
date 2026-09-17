@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 from pydantic_core import PydanticSerializationError
 
-from arkui_ut_agent.agents import AgentState, StopReason, TaskMemory
+from arkui_ut_agent.agents import AgentState, Plan, PlanStep, StopReason, TaskMemory
 from arkui_ut_agent.tools import Observation, Provenance
 
 COLLECTION_FIELDS = (
@@ -207,7 +207,15 @@ def test_nested_memory_mutation_is_revalidated_even_during_working_update_or_exc
 
 def test_agent_and_task_memory_round_trip_without_conversation_history(full_payload):
     state = AgentState(
-        goal="Add a Text unit test", current_plan=["inspect", "verify"], current_step="verify",
+        goal="Add a Text unit test",
+        current_plan=Plan(
+            steps=(
+                PlanStep(id="inspect", description="Inspect the implementation"),
+                PlanStep(id="verify", description="Run the focused test"),
+            ),
+            active_step_id="verify",
+        ),
+        current_step="step-2",
         hypotheses=["Not a confirmed fact"], task_memory=TaskMemory(**full_payload),
         retry_count=1, stop_reason=StopReason.SUCCESS,
     )
