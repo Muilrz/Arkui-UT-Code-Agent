@@ -134,7 +134,7 @@ def test_invalid_diagnosis_is_bounded_and_control_action_never_executes():
     assert agent.n_calls == 3
     assert agent.cost == 0.8
     assert env.calls == [{"command": "inspect"}]
-    assert agent.state.current_decision is None
+    assert agent.state.current_decision.kind is DecisionKind.ACT
     assert len(agent.state.evidence_memory.records) == 1
     assert all(record.source != "diagnose" for record in agent.state.evidence_memory.records)
     feedback = next(
@@ -160,7 +160,7 @@ def test_model_format_error_during_diagnose_is_accounted_once_without_new_step()
     assert agent.cost == 0.9
     assert agent._step_count == 1
     assert agent.state.current_step == "step-1"
-    assert agent.state.current_decision is None
+    assert agent.state.current_decision.kind is DecisionKind.ACT
     assert env.calls == [{"command": "inspect"}]
     feedback = next(
         message for message in agent.messages

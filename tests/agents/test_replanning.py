@@ -107,7 +107,7 @@ def test_explicit_replan_decision_replaces_plan_before_next_normal_action():
     assert agent.n_calls == 5
     assert agent.cost == 1.5
     assert agent.state.current_plan == Plan.model_validate(_plan_payload(2, step_id="repair"))
-    assert agent.state.current_decision is None
+    assert agent.state.current_decision.kind is DecisionKind.ACT
     assert env.calls == [{"command": "inspect"}, {"command": "submit"}]
 
     replan_input = get_content_string(model.inputs[3][2])
@@ -117,7 +117,7 @@ def test_explicit_replan_decision_replaces_plan_before_next_normal_action():
     assert "new fact" in replan_input
     next_action_context = get_content_string(model.inputs[4][2])
     assert '"revision":2' in next_action_context
-    assert '"current_decision":null' in next_action_context
+    assert '"current_decision":{"kind":"act"' in next_action_context
 
     replan_message = next(
         message for message in agent.messages if message.get("extra", {}).get("phase") == "replan"

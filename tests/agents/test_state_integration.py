@@ -48,7 +48,7 @@ def agent_for(steps, env, **config):
         DeterministicModel(outputs=outputs), env,
         system_template="system", instance_template="{{ task }}", cost_limit=0,
         step_limit=len(steps), initial_planning=False, diagnose_after_observation=False,
-        repeat_detection=False, **config,
+        repeat_detection=False, integrated_control_loop=False, **config,
     )
 
 

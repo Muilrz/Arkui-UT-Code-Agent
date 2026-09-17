@@ -13,7 +13,9 @@ from typing import Literal, NoReturn
 from rich.console import Console
 from rich.rule import Rule
 
+from arkui_ut_agent.agents.control import ControlDecision, DecisionKind
 from arkui_ut_agent.agents.default import AgentConfig, DefaultAgent
+from arkui_ut_agent.agents.stop import StopPolicy
 from arkui_ut_agent.agents.utils.prompt_user import _multiline_prompt, prompt_session
 from arkui_ut_agent.exceptions import LimitsExceeded, Submitted, TimeExceeded, UserInterruption
 from arkui_ut_agent.models.utils.content_string import get_content_string
@@ -93,6 +95,8 @@ class InteractiveAgent(DefaultAgent):
             )
             self.config.step_limit = int(input("New step limit: "))
             self.config.cost_limit = float(input("New cost limit: "))
+            if self.state is not None:
+                self.state = self.state.updated(stop_reason=None)
             return super().query()
 
     def _should_create_initial_plan(self) -> bool:
@@ -106,6 +110,21 @@ class InteractiveAgent(DefaultAgent):
     def _should_replan_current_plan(self) -> bool:
         """Human mode remains model-free; model-driven modes inherit Replan."""
         return self.config.mode != "human" and super()._should_replan_current_plan()
+
+    def _can_execute_action_boundary(self) -> bool:
+        return self.config.mode == "human" or super()._can_execute_action_boundary()
+
+    def _ensure_action_decision(self) -> ControlDecision:
+        if self.config.mode == "human" and self.state is not None:
+            decision = self.state.current_decision
+            if decision is None or decision.kind not in StopPolicy.ACTIONABLE_DECISIONS:
+                decision = ControlDecision(
+                    kind=DecisionKind.ACT,
+                    rationale="The user explicitly issued this action.",
+                )
+                self.state = self.state.updated(current_decision=decision)
+            return decision
+        return super()._ensure_action_decision()
 
     @staticmethod
     def _stdin_is_interactive() -> bool:
@@ -144,7 +163,8 @@ class InteractiveAgent(DefaultAgent):
             self._ask_confirmation_or_interrupt(commands)
             for action in actions:
                 outputs.append(self._execute_action(action))
-                if self._should_replan_current_plan():
+                stopped = self.state is not None and self.state.stop_reason is not None
+                if stopped or self._should_replan_current_plan():
                     break
         except Submitted as e:
             self._check_for_new_task_or_submit(e)

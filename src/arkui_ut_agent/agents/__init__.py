@@ -16,6 +16,8 @@ from arkui_ut_agent.agents.context import (
 from arkui_ut_agent.agents.control import ControlDecision, DecisionKind
 from arkui_ut_agent.agents.planning import Plan, PlanStep
 from arkui_ut_agent.agents.state import AgentState, Evidence, EvidenceMemory, MemoryUpdateEvent, StopReason, TaskMemory
+from arkui_ut_agent.agents.stop import StopPolicy
+from arkui_ut_agent.agents.trace import ExecutionStepTrace
 
 _AGENT_MAPPING = {
     "default": "arkui_ut_agent.agents.default.DefaultAgent",
@@ -53,10 +55,12 @@ __all__ = [
     "DecisionKind",
     "Evidence",
     "EvidenceMemory",
+    "ExecutionStepTrace",
     "MemoryUpdateEvent",
     "Plan",
     "PlanStep",
     "StopReason",
+    "StopPolicy",
     "TaskMemory",
     "get_agent",
     "get_agent_class",

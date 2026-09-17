@@ -50,6 +50,7 @@ def _agent(model, env=None, **config):
         initial_planning=False,
         diagnose_after_observation=False,
         repeat_detection=False,
+        integrated_control_loop=False,
         **config,
     )
 

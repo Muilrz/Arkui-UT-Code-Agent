@@ -66,6 +66,7 @@ def default_config():
     config["agent"]["initial_planning"] = False
     config["agent"]["diagnose_after_observation"] = False
     config["agent"]["repeat_detection"] = False
+    config["agent"]["integrated_control_loop"] = False
     return config["agent"]
 
 
@@ -78,6 +79,7 @@ def toolcall_config():
     config["agent"]["initial_planning"] = False
     config["agent"]["diagnose_after_observation"] = False
     config["agent"]["repeat_detection"] = False
+    config["agent"]["integrated_control_loop"] = False
     return config["agent"]
 
 

@@ -92,10 +92,14 @@ context-local 去重，以及普通历史压力下关键 Evidence 保留；`test
 - [x] Initial Planning。
 - [x] 决策状态：retrieve / act / diagnose / replan / repair / verify / finish。
 - [x] repeated tool/input/observation detection。
-- [ ] Stop Policy。
-- [ ] 将 Planner / Diagnose / Stop Policy 接入主 Agent Loop。
+- [x] Stop Policy。
+- [x] 将 Planner / Diagnose / Stop Policy 接入主 Agent Loop。
 
 **Acceptance：** Trace 中每个 Step 都能看到 current_goal、decision、action、observation、state update。
+
+已由 `tests/agents/test_stop_policy.py` 验证正式 StopReason 映射、finish/limit terminal、七种 decision 的
+主循环语义、repeat → Replan → no-new-Evidence 终止，以及可序列化的最小 execution-step trace；4A–4D
+contract regression 与全量测试保持通过。Stage 4 checklist、Acceptance 与 Exit Criteria 已满足，阶段正式收口。
 
 ## Stage 5 — RetrievalRouter
 
