@@ -14,6 +14,7 @@ def test_minimal_state_has_safe_defaults():
         "goal": "Add an ArkUI unit test",
         "current_plan": None,
         "current_step": None,
+        "current_decision": None,
         "information_gap": None,
         "next_action": None,
         "open_questions": [],

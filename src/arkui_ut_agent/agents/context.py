@@ -161,6 +161,7 @@ class ContextBuilder:
             key: payload[key]
             for key in (
                 "current_step",
+                "current_decision",
                 "information_gap",
                 "next_action",
                 "open_questions",
@@ -195,6 +196,7 @@ class ContextBuilder:
             state.goal,
             None if state.current_plan is None else state.current_plan.model_dump(mode="json"),
             state.current_step,
+            None if state.current_decision is None else state.current_decision.model_dump(mode="json"),
             state.information_gap,
             state.next_action,
             state.open_questions,

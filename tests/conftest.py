@@ -78,13 +78,14 @@ def assert_observations_match(expected_observations: list[str], messages: list[d
         expected_observations: List of expected observation strings
         messages: Agent conversation messages (list of message dicts with 'role' and 'content')
     """
-    # Extract actual observations from agent messages
-    # User/exit messages (observations) are at indices 3, 5, 7, etc.
-    actual_observations = []
-    for i in range(len(expected_observations)):
-        user_message_index = 3 + (i * 2)
-        assert messages[user_message_index]["role"] in ("user", "exit")
-        actual_observations.append(messages[user_message_index]["content"])
+    # Control-only assistant messages may appear between an action Observation and
+    # the next action. Select actual Observation/exit roles instead of relying on
+    # fixed alternating indices.
+    actual_observations = [
+        message["content"]
+        for message in messages[2:]
+        if message.get("role") in ("user", "exit")
+    ]
 
     assert len(actual_observations) == len(expected_observations), (
         f"Expected {len(expected_observations)} observations, got {len(actual_observations)}"

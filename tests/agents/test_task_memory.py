@@ -41,7 +41,7 @@ def full_payload():
 
 def test_working_memory_has_one_source_and_updates_do_not_promote_hypotheses():
     working_fields = {
-        "goal", "current_plan", "current_step", "information_gap", "next_action",
+        "goal", "current_plan", "current_step", "current_decision", "information_gap", "next_action",
         "open_questions", "hypotheses", "blocking_issue", "stop_reason", "retry_count",
     }
     assert set(AgentState.model_fields) == working_fields | {"task_memory", "evidence_memory"}

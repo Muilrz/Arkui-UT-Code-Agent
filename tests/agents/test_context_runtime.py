@@ -48,6 +48,7 @@ def _agent(model, env=None, **config):
         instance_template="stable agent instruction for {{ task }}",
         cost_limit=0,
         initial_planning=False,
+        diagnose_after_observation=False,
         **config,
     )
 

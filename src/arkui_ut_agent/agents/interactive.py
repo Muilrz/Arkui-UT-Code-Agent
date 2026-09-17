@@ -99,6 +99,10 @@ class InteractiveAgent(DefaultAgent):
         """Human-issued commands remain model-free; model-driven modes use planning."""
         return self.config.mode != "human" and super()._should_create_initial_plan()
 
+    def _should_diagnose_pending_observations(self) -> bool:
+        """Human mode remains model-free; model-driven modes inherit Diagnose."""
+        return self.config.mode != "human" and super()._should_diagnose_pending_observations()
+
     @staticmethod
     def _stdin_is_interactive() -> bool:
         """Whether an interactive terminal is available to prompt the user.

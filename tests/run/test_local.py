@@ -19,11 +19,22 @@ def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0
         "steps": [{"id": "execute", "description": "Execute and verify the requested task"}],
         "active_step_id": "execute",
     }
+    outputs = [make_output("Initial plan", [{"command": json.dumps(plan)}], cost=cost_per_call)]
+    for text in text_outputs:
+        actions = parse_command(text)
+        outputs.append(make_output(text, actions, cost=cost_per_call))
+        if actions and "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" not in actions[0]["command"]:
+            decision = {
+                "kind": "verify",
+                "rationale": "The Tool Observation succeeded; verify the requested outcome next",
+            }
+            outputs.append(make_output(
+                "Diagnose the Tool Observation",
+                [{"command": json.dumps(decision)}],
+                cost=cost_per_call,
+            ))
     return DeterministicModel(
-        outputs=[
-            make_output("Initial plan", [{"command": json.dumps(plan)}], cost=cost_per_call),
-            *[make_output(text, parse_command(text), cost=cost_per_call) for text in text_outputs],
-        ],
+        outputs=outputs,
         cost_per_call=cost_per_call,
         **kwargs,
     )
@@ -61,11 +72,15 @@ def test_local_end_to_end(local_test_data):
     messages = agent.messages
 
     # Verify we have the right number of messages
-    # system + task + planning response + (assistant + observation) per action step
-    expected_total_messages = 3 + (len(model_responses) * 2)
+    # system + task + planning response + one Diagnose response after each non-terminal action
+    diagnosis_calls = sum(
+        "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" not in response for response in model_responses
+    )
+    expected_total_messages = 3 + (len(model_responses) * 2) + diagnosis_calls
     assert len(messages) == expected_total_messages, f"Expected {expected_total_messages} messages, got {len(messages)}"
 
     assert messages[2]["extra"]["phase"] == "initial_planning"
+    assert sum(message.get("extra", {}).get("phase") == "diagnose" for message in messages) == diagnosis_calls
     assert_observations_match(expected_observations, [*messages[:2], *messages[3:]])
 
-    assert agent.n_calls == len(model_responses) + 1
+    assert agent.n_calls == len(model_responses) + diagnosis_calls + 1

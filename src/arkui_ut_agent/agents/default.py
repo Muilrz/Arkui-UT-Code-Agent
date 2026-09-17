@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 
 from arkui_ut_agent import Environment, Model, __version__
 from arkui_ut_agent.agents.context import ContextBuilder
+from arkui_ut_agent.agents.control import _DIAGNOSE_INSTRUCTION, _parse_control_decision
 from arkui_ut_agent.agents.integration import _evidence_from_tool_observation
 from arkui_ut_agent.agents.planning import _INITIAL_PLANNING_INSTRUCTION, _parse_initial_plan
 from arkui_ut_agent.agents.state import AgentState, MemoryUpdateEvent
@@ -26,6 +27,9 @@ from arkui_ut_agent.utils.serialize import recursive_merge
 _JSON_ADAPTER = TypeAdapter(JsonValue, config=ConfigDict(allow_inf_nan=False))
 _RUNTIME_FEEDBACK_MAX_CHARS = 2_000
 _RUNTIME_FEEDBACK_OMISSION_MARKER = "\n…[runtime feedback omitted]…\n"
+_DIAGNOSIS_RECORDS_MAX_CHARS = 4_000
+_DIAGNOSIS_RECORDS_OMISSION_MARKER = "\n…[tool observation records omitted]…\n"
+_CONTROL_ONLY_PHASES = frozenset({"initial_planning", "diagnose"})
 
 
 class AgentConfig(BaseModel):
@@ -45,6 +49,8 @@ class AgentConfig(BaseModel):
     """Exit after this many format errors in a row (0 = no limit)."""
     initial_planning: bool = True
     """Create a structured Plan before the first model-driven action step."""
+    diagnose_after_observation: bool = True
+    """Create a control-only diagnosis after actual Tool Observations."""
     output_path: Path | None = None
     """Save the trajectory to this path."""
 
@@ -67,6 +73,7 @@ class DefaultAgent:
         self.tool_executions: list[dict] = []
         self._step_count = 0
         self._active_step_id: str | None = None
+        self._pending_diagnosis_records: list[dict] = []
         self.context_builder = ContextBuilder()
 
     def get_template_vars(self, **kwargs) -> dict:
@@ -115,6 +122,7 @@ class DefaultAgent:
         self.tool_executions = []
         self._step_count = 0
         self._active_step_id = None
+        self._pending_diagnosis_records = []
         self.add_messages(
             self.model.format_message(role="system", content=self._render_template(self.config.system_template)),
             self.model.format_message(role="user", content=self._render_template(self.config.instance_template)),
@@ -123,6 +131,8 @@ class DefaultAgent:
             try:
                 if self._should_create_initial_plan():
                     self.create_initial_plan()
+                elif self._should_diagnose_pending_observations():
+                    self.diagnose_pending_observations()
                 else:
                     self.step()
                 self.n_consecutive_format_errors = 0  # reset on any clean step
@@ -131,7 +141,7 @@ class DefaultAgent:
                 self.cost += e.messages[0].get("extra", {}).get("cost", 0.0)
                 for message in e.messages:
                     extra = message.setdefault("extra", {})
-                    if extra.get("phase") != "initial_planning" and self._active_step_id is not None:
+                    if extra.get("phase") not in _CONTROL_ONLY_PHASES and self._active_step_id is not None:
                         extra["step_id"] = self._active_step_id
                 self.n_consecutive_format_errors += 1
                 if 0 < self.config.max_consecutive_format_errors <= self.n_consecutive_format_errors:
@@ -190,6 +200,78 @@ class DefaultAgent:
         if self.state is None:  # The run setup establishes this invariant.
             raise RuntimeError("AgentState must exist before initial planning.")
         self.state = self.state.updated(current_plan=plan)
+
+    def _should_diagnose_pending_observations(self) -> bool:
+        return bool(
+            self.config.diagnose_after_observation
+            and self.state is not None
+            and self._pending_diagnosis_records
+        )
+
+    def diagnose_pending_observations(self) -> None:
+        """Record a next decision without allocating a step or executing its action."""
+        self._check_query_limits()
+        source_step_ids = list(dict.fromkeys(
+            record["step_id"] for record in self._pending_diagnosis_records
+        ))
+        try:
+            message = self._call_model(self._diagnosis_input_messages())
+        except FormatError as error:
+            for feedback in error.messages:
+                extra = feedback.setdefault("extra", {})
+                extra.setdefault("phase", "diagnose")
+                extra.setdefault("source_step_ids", source_step_ids)
+            raise
+        extra = message.setdefault("extra", {})
+        extra["phase"] = "diagnose"
+        extra["source_step_ids"] = source_step_ids
+        self.add_messages(message)
+        try:
+            decision = _parse_control_decision(message)
+        except (TypeError, ValueError) as error:
+            feedback = self.model.format_message(
+                role="user",
+                content=f"Invalid ControlDecision: {error}",
+                extra={
+                    "interrupt_type": "FormatError",
+                    "phase": "diagnose",
+                    "source_step_ids": source_step_ids,
+                },
+            )
+            raise FormatError(feedback) from error
+        if self.state is None:
+            raise RuntimeError("AgentState must exist before Diagnose.")
+        self.state = self.state.updated(current_decision=decision)
+        self._pending_diagnosis_records = []
+
+    def _diagnosis_input_messages(self) -> list[dict]:
+        """Build a bounded control-only view of state and actual Tool records."""
+        if self.state is None:
+            raise RuntimeError("AgentState must exist before Diagnose.")
+        context = self.context_builder.build(self.state).text
+        records = json.dumps(
+            self._pending_diagnosis_records,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        records = self._bound_runtime_text(
+            records,
+            _DIAGNOSIS_RECORDS_MAX_CHARS,
+            _DIAGNOSIS_RECORDS_OMISSION_MARKER,
+        )
+        diagnosis_message = self.model.format_message(
+            role="user",
+            content=(
+                f"{_DIAGNOSE_INSTRUCTION}\n\n{context}"
+                f"\n\n## recent_tool_observations\n{records}"
+            ),
+        )
+        messages = [*copy.deepcopy(self.messages[:2]), diagnosis_message]
+        if feedback := self._latest_runtime_feedback():
+            messages.append(feedback)
+        return messages
 
     def _initial_planning_input_messages(self) -> list[dict]:
         """Build a bounded planning-only view without replaying trajectory history."""
@@ -268,13 +350,22 @@ class DefaultAgent:
             content = get_content_string(message)
             if not content:
                 continue
-            if len(content) > _RUNTIME_FEEDBACK_MAX_CHARS:
-                available = _RUNTIME_FEEDBACK_MAX_CHARS - len(_RUNTIME_FEEDBACK_OMISSION_MARKER)
-                head = (available + 1) // 2
-                tail = available - head
-                content = content[:head] + _RUNTIME_FEEDBACK_OMISSION_MARKER + content[-tail:]
+            content = self._bound_runtime_text(
+                content,
+                _RUNTIME_FEEDBACK_MAX_CHARS,
+                _RUNTIME_FEEDBACK_OMISSION_MARKER,
+            )
             return self.model.format_message(role="user", content=content)
         return None
+
+    @staticmethod
+    def _bound_runtime_text(value: str, limit: int, marker: str) -> str:
+        if len(value) <= limit:
+            return value
+        available = limit - len(marker)
+        head = (available + 1) // 2
+        tail = available - head
+        return value[:head] + marker + value[-tail:] if tail else value[:head] + marker
 
     def execute_actions(self, message: dict) -> list[dict]:
         """Execute actions in message, add observation messages, return them."""
@@ -363,10 +454,13 @@ class DefaultAgent:
             # Invalid Any data/metadata must not break saving or be silently stringified.
             recorded_observation = None
             self.logger.warning("Evidence skipped for %s: %s", step_id, status)
-        self.tool_executions.append({
+        execution_record = {
             "step_id": step_id, "tool_name": observation.tool_name, "tool_input": tool_input, "observation": recorded_observation,
             "evidence_identity": identity, "status": status,
-        })
+        }
+        self.tool_executions.append(execution_record)
+        if self.config.diagnose_after_observation:
+            self._pending_diagnosis_records.append(copy.deepcopy(execution_record))
         return recorded_observation
 
     def serialize(self, *extra_dicts) -> dict:

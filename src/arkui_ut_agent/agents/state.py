@@ -18,6 +18,7 @@ from pydantic import (
     model_validator,
 )
 
+from arkui_ut_agent.agents.control import ControlDecision
 from arkui_ut_agent.agents.planning import Plan
 from arkui_ut_agent.tools.contracts import Provenance
 
@@ -222,8 +223,9 @@ class AgentState(BaseModel):
     ``current_plan`` is the project-owned planning snapshot. ``current_step`` is a
     runtime producing-step label (for example ``step-1``), not a PlanStep id; Tool
     executions, Evidence and MemoryUpdateEvent continue to share that runtime label.
-    Conversation messages never belong to this state; evidence_memory holds explicit
-    Tool facts.
+    ``current_decision`` is a control intention and model rationale, not confirmed
+    Evidence. Conversation messages never belong to this state; evidence_memory
+    holds explicit Tool facts.
 
     The existing execution fields are the sole Working Memory contract; task_memory
     separately holds caller-confirmed task information. No duplicate WorkingMemory
@@ -246,6 +248,7 @@ class AgentState(BaseModel):
     goal: NonEmptyString
     current_plan: Plan | None = None
     current_step: NonEmptyString | None = None
+    current_decision: ControlDecision | None = None
     information_gap: NonEmptyString | None = None
     next_action: NonEmptyString | None = None
     open_questions: list[NonEmptyString] = Field(default_factory=list)

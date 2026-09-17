@@ -13,6 +13,7 @@ from arkui_ut_agent.agents.context import (
     ContextBuilder,
     ContextSection,
 )
+from arkui_ut_agent.agents.control import ControlDecision, DecisionKind
 from arkui_ut_agent.agents.planning import Plan, PlanStep
 from arkui_ut_agent.agents.state import AgentState, Evidence, EvidenceMemory, MemoryUpdateEvent, StopReason, TaskMemory
 
@@ -48,6 +49,8 @@ __all__ = [
     "ContextBudget",
     "ContextBuilder",
     "ContextSection",
+    "ControlDecision",
+    "DecisionKind",
     "Evidence",
     "EvidenceMemory",
     "MemoryUpdateEvent",

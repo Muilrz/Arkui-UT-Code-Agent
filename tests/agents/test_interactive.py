@@ -108,6 +108,7 @@ def default_config():
     with open(config_path) as f:
         config = yaml.safe_load(f)
     config["agent"]["initial_planning"] = False
+    config["agent"]["diagnose_after_observation"] = False
     return config["agent"]
 
 
@@ -118,6 +119,7 @@ def toolcall_config():
     with open(config_path) as f:
         config = yaml.safe_load(f)
     config["agent"]["initial_planning"] = False
+    config["agent"]["diagnose_after_observation"] = False
     return config["agent"]
 
 
