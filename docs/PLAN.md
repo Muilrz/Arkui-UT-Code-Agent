@@ -76,13 +76,15 @@ Stage 2 全部 checklist 与 Acceptance 已满足，Windows + Ubuntu CI 及人�
 - [x] 压缩历史失败。
 - [x] Evidence / source snippet 去重。
 - [x] deterministic context tests。
+- [x] 将 bounded Context 接到实际 model query 边界，并独立保留完整 trajectory。
 
 **Acceptance：** Context 大小有界，同时保留下一步决策所需 Evidence。
 
 已由 `tests/agents/test_context.py` 验证固定 section / hard budget、relevant Task Memory、current-step
 Evidence、Build/Test diagnostics、历史失败压缩、真实 `read_file` / `rg_search` payload 的 snippet 控制与
-context-local 去重，以及普通历史压力下关键 Evidence 保留。Stage 3 checklist 与 Acceptance 已满足；
-Context Builder 的主 Agent Loop 接线仍属于 Stage 4。
+context-local 去重，以及普通历史压力下关键 Evidence 保留；`tests/agents/test_context_runtime.py` 进一步
+验证实际 model query 不再重放增长的完整 trajectory，关键 Evidence / Build-Test diagnostics 能进入调用
+上下文，而完整 messages 仍被记录和序列化。Stage 3 checklist 与 Exit Criteria 已满足。
 
 ## Stage 4 — Planning 与 Control Loop
 
@@ -91,7 +93,7 @@ Context Builder 的主 Agent Loop 接线仍属于 Stage 4。
 - [ ] 决策状态：retrieve / act / diagnose / replan / repair / verify / finish。
 - [ ] repeated tool/input/observation detection。
 - [ ] Stop Policy。
-- [ ] 将 state/memory/context 接入主 Agent Loop。
+- [ ] 将 Planner / Diagnose / Stop Policy 接入主 Agent Loop。
 
 **Acceptance：** Trace 中每个 Step 都能看到 current_goal、decision、action、observation、state update。
 

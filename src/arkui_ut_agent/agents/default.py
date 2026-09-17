@@ -2,6 +2,7 @@
 or https://minimal-agent.com for a tutorial on the basic building principles.
 """
 
+import copy
 import json
 import logging
 import time
@@ -12,14 +13,18 @@ from jinja2 import StrictUndefined, Template
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 
 from arkui_ut_agent import Environment, Model, __version__
+from arkui_ut_agent.agents.context import ContextBuilder
 from arkui_ut_agent.agents.integration import _evidence_from_tool_observation
 from arkui_ut_agent.agents.state import AgentState, MemoryUpdateEvent
 from arkui_ut_agent.exceptions import FormatError, InterruptAgentFlow, LimitsExceeded, TimeExceeded
+from arkui_ut_agent.models.utils.content_string import get_content_string
 from arkui_ut_agent.tools.contracts import Observation, ToolResult, normalize_tool_result
 from arkui_ut_agent.tools.execution import _backend_attribute, _effective_timeout, _normalize_execution_result
 from arkui_ut_agent.utils.serialize import recursive_merge
 
 _JSON_ADAPTER = TypeAdapter(JsonValue, config=ConfigDict(allow_inf_nan=False))
+_RUNTIME_FEEDBACK_MAX_CHARS = 2_000
+_RUNTIME_FEEDBACK_OMISSION_MARKER = "\n…[runtime feedback omitted]…\n"
 
 
 class AgentConfig(BaseModel):
@@ -59,6 +64,7 @@ class DefaultAgent:
         self.tool_executions: list[dict] = []
         self._step_count = 0
         self._active_step_id: str | None = None
+        self.context_builder = ContextBuilder()
 
     def get_template_vars(self, **kwargs) -> dict:
         return recursive_merge(
@@ -166,11 +172,48 @@ class DefaultAgent:
             )
         self._begin_step()
         self.n_calls += 1
-        message = self.model.query(self.messages)
+        message = self.model.query(self._model_input_messages())
         message.setdefault("extra", {})["step_id"] = self._active_step_id
         self.cost += message.get("extra", {}).get("cost", 0.0)
         self.add_messages(message)
         return message
+
+    def _model_input_messages(self) -> list[dict]:
+        """Build the bounded per-call view without discarding the full trajectory.
+
+        The first system and instance messages are the fixed instruction prefix for
+        one run. Everything after that remains available in ``self.messages`` for
+        trace persistence, but is replaced at the model boundary by the current
+        AgentState-derived Context. The latest format/user interruption is retained
+        as bounded runtime feedback so existing correction and interactive flows do
+        not depend on replaying the complete history.
+        """
+        if self.state is None:  # _begin_step() establishes this invariant.
+            raise RuntimeError("AgentState must exist before building model input.")
+        context_message = self.model.format_message(
+            role="user", content=self.context_builder.build(self.state).text
+        )
+        messages = [*copy.deepcopy(self.messages[:2]), context_message]
+        if feedback := self._latest_runtime_feedback():
+            messages.append(feedback)
+        return messages
+
+    def _latest_runtime_feedback(self) -> dict | None:
+        """Return at most one bounded control-flow message from the trajectory."""
+        for message in reversed(self.messages[2:]):
+            interrupt_type = message.get("extra", {}).get("interrupt_type")
+            if not isinstance(interrupt_type, str) or not interrupt_type:
+                continue
+            content = get_content_string(message)
+            if not content:
+                continue
+            if len(content) > _RUNTIME_FEEDBACK_MAX_CHARS:
+                available = _RUNTIME_FEEDBACK_MAX_CHARS - len(_RUNTIME_FEEDBACK_OMISSION_MARKER)
+                head = (available + 1) // 2
+                tail = available - head
+                content = content[:head] + _RUNTIME_FEEDBACK_OMISSION_MARKER + content[-tail:]
+            return self.model.format_message(role="user", content=content)
+        return None
 
     def execute_actions(self, message: dict) -> list[dict]:
         """Execute actions in message, add observation messages, return them."""
