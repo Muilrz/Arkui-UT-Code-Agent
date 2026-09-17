@@ -2,105 +2,124 @@
 
 ## 1. Slice
 
-**Stage 4 / Slice 4A — Planning Contracts**
+**Stage 4 / Slice 4B — Initial Planning**
 
-所属清单：`PLAN.md` 的 Stage 4。本文件已替换完成验收的 Stage 3 / Slice 3D 交接状态。
+所属清单：`PLAN.md` 的 Stage 4。本文件已替换完成验收的 Stage 4 / Slice 4A 交接状态。
 
 ## 2. Objective / In Scope
 
-完成 Stage 4 的 structured planning contract foundation：
+在新任务进入正常 model-driven action execution 前，通过现有 Model abstraction 真实生成并保存一个
+通过 Slice 4A contract 验证的 structured `Plan`：
 
-- 定义项目自己的 immutable、validated `Plan` / `PlanStep`；
-- 将 `AgentState.current_plan` 从 opaque JSON 收窄为 `Plan | None`；
-- 将 `AgentState.current_step` 明确收窄为 runtime producing-step label；
-- 让 structured plan 支持 validated replacement update、JSON serialization / restore；
-- 让现有 `ContextBuilder` 稳定渲染 structured plan 并使用其内容做 relevance selection；
-- 保持 Stage 2 Evidence identity / dedup / provenance 与 Stage 3 bounded Context / model-input contract 不变。
+- Initial Planning model call 进入现有 call / cost accounting 和 trajectory；
+- 有效 Plan 写入 `AgentState.current_plan`，并选择有效的 plan-local active step；
+- 后续正常 model query 通过现有 bounded `ContextBuilder` 看到 structured Plan；
+- planning-only response 不执行 Tool action，不分配 runtime producing `step_id`，不产生 Evidence；
+- invalid planning output 使用既有 bounded `FormatError` 语义重试或终止；
+- 保持 AgentState serialization、Stage 2 provenance、Stage 3 bounded input、4A identity boundary 和
+  `InteractiveAgent` 继承路径。
 
 ## 3. Out of Scope
 
-本 Slice 没有实现 Initial Planner、Replanner、Diagnose、control decision、repeated-call detection、Stop Policy、
-主 Agent Loop control-flow 改造、RetrievalRouter、Retrieval Intent、SemanticProvider、Task Relation Graph、
-UT failure classification、完整 Execution Trace 或 Stage 5+ 能力。
+本 Slice 没有实现 Replanner、Observation 后 Diagnose、control decision states、repeated-call detection、
+Stop Policy、完整 control-loop 重写、Retrieval Intent / Router、SemanticProvider、Task Relation Graph、
+UT-specific failure classification 或完整 Execution Trace framework。
 
-## 4. 实际 Planning Contract
-
-```text
-Plan
-├── revision: positive integer, caller-managed
-├── steps: non-empty ordered tuple[PlanStep, ...]
-└── active_step_id: optional plan-local reference
-
-PlanStep
-├── id: non-empty, unique within Plan
-└── description: non-empty
-```
-
-- `Plan` / `PlanStep` 均禁止未知字段、字段赋值和无验证更新；`updated()` 返回完整重验证的新 snapshot；
-- `Plan.steps` 使用 tuple，避免 planning collection 被原地修改；
-- `active_step_id` 如存在，必须引用同一 Plan 中的唯一 `PlanStep.id`；
-- `revision` 只提供 contract version 信息，不自动递增，也不实现 Replan policy；
-- contract 不包含未来 Planner prompt/model-output schema、action、decision 或 workflow status。
-
-## 5. PlanStep 与 Runtime Step 边界
+## 4. Runtime Flow
 
 ```text
-Plan.active_step_id
-→ 只标识当前 Plan 中的 PlanStep
-
-AgentState.current_step（例如 step-1）
-→ Tool execution.step_id
-→ Evidence.step_id
-→ MemoryUpdateEvent.step_id
-→ ContextBuilder current-step Evidence priority
+run(task)
+→ initialize AgentState(current_plan=None, current_step=None)
+→ bounded initial-planning model input
+→ existing Model.query()
+→ parse normalized single action.command as Plan JSON data
+→ Plan.model_validate()
+→ select first PlanStep when active_step_id is null
+→ AgentState.current_plan = validated Plan
+→ next loop iteration
+→ normal query builds ContextBuilder view containing Plan
+→ _begin_step() allocates runtime step-N
+→ execute normal action
 ```
 
-两套标识不做隐式映射。`DefaultAgent._begin_step()` 仍只分配 runtime `step-N`，不会覆盖
-`Plan.active_step_id`；Evidence identity 仍排除 `step_id`，dedup / first-record-wins 行为未改变。
+`AgentConfig.initial_planning` 默认为 `True`；显式设为 `False` 只用于 baseline/单一职责 regression。
+`InteractiveAgent` 的 model-driven `confirm` / `yolo` 路径继承 Initial Planning；纯 human mode 保持 model-free，
+从 human 切换到 model-driven mode 时会先建立 Plan。
 
-## 6. 实际修改文件
+## 5. Model Input / Output Contract
+
+- 没有新增 provider-specific API，也没有复制 Model provider stack；
+- planning input 使用固定 system / instance prefix，加一条 planning instruction 与
+  `ContextBuilder.build(current AgentState)`，不重放增长的 trajectory；
+- 现有 Model 已将 text/tool-call response 统一为 `message.extra.actions`；Initial Planning 要求恰好一个 action，
+  并仅把其中 `command` 字符串当作 Plan JSON 数据；
+- 该 action 永不传入 `execute_actions()` / Environment；payload 必须完整通过 Slice 4A `Plan` validation；
+- planning response 以 `phase=initial_planning` 保存在 messages/trajectory，后续正常 model input 只通过
+  AgentState + ContextBuilder 看见 Plan，不回放 planning response。
+
+## 6. Accounting / Provenance Boundary
+
+- planning 和 normal query 共用 `_check_query_limits()` 与 `_call_model()`；每次实际 Model call 对
+  `n_calls` 和 `cost` 各计一次；Model-level `FormatError` 的已计费 cost 继续由既有异常路径接收；
+- successful-response / invalid-Plan 路径在 `_call_model()` 计费，FormatError feedback 不重复计费；
+- planning 不调用 `_begin_step()`，不设置 message `step_id`，不产生 `MemoryUpdateEvent`、Tool execution 或 Evidence；
+- 第一次正常 action 仍从 runtime `step-1` 开始，Tool execution、Evidence 和 MemoryUpdateEvent 继续共享该 ID；
+- planning 只设置 `Plan.active_step_id`，不把 PlanStep identity 映射为 runtime step identity。
+
+## 7. Invalid Output
+
+以下情况均不生成 Plan，也不执行 response 中的 action：
+
+- action transport 缺失或不止一个；
+- `action.command` 不是字符串或不是 JSON；
+- JSON 不是 object；
+- payload 不满足 Plan / PlanStep validation。
+
+错误被转换为带 `phase=initial_planning` 的既有 `FormatError` feedback；重试受
+`max_consecutive_format_errors`、call/cost/time limits 约束，不引入 Stop Policy。
+
+## 8. 实际修改文件
 
 ```text
 src/arkui_ut_agent/agents/planning.py
-src/arkui_ut_agent/agents/state.py
-src/arkui_ut_agent/agents/context.py
 src/arkui_ut_agent/agents/default.py
-src/arkui_ut_agent/agents/__init__.py
+src/arkui_ut_agent/agents/interactive.py
+tests/agents/test_initial_planning.py
 tests/agents/test_planning.py
-tests/agents/test_state.py
-tests/agents/test_task_memory.py
-tests/agents/test_context.py
+tests/agents/test_default.py
+tests/agents/test_interactive.py
 tests/agents/test_state_integration.py
+tests/agents/test_context_runtime.py
+tests/run/test_cli_integration.py
+tests/run/test_local.py
 docs/PLAN.md
 docs/CURRENT_TASK.md
-docs/SPEC.md
-docs/DECISIONS.md
 ```
 
-## 7. Tests / Evidence
+## 9. Tests / Evidence
 
-- `test_planning.py` 验证 Plan / PlanStep shape、非空字段、strict revision、唯一 step id、有效
-  `active_step_id`、未知字段拒绝、immutable / validated replacement update、unsafe copy 序列化拒绝，
-  以及 AgentState JSON round-trip；
-- `test_state.py` / `test_task_memory.py` 将既有 state / memory serialization regression 切换到正式 Plan；
-- `test_context.py` 验证 structured plan canonical rendering、round-trip deterministic output、plan 内容参与
-  relevance selection，以及 plan-local id 不会被解释为 runtime Evidence step identity；
-- `test_state_integration.py` 验证真实 execution 后 Plan active step 不变，而 current step、Tool execution、
-  Evidence 与 MemoryUpdateEvent 继续共享 runtime `step-N`；
-- 既有 Stage 2 / Stage 3 tests 全部继续通过。
+- `test_initial_planning.py` 验证 planning 先于正常 action、Plan 写入 state 和进入实际 bounded context、
+  planning action 不执行、planning 不分配 runtime step/Evidence、call/cost 精确计数、trajectory restore、
+  invalid payload 与 Model-level FormatError 的 bounded handling，以及 Interactive model/human 路径；
+- `test_planning.py` 验证 normalized action transport parsing、null active step 的 deterministic first-step selection，
+  以及 missing / ambiguous / non-JSON / wrong-shape / invalid-Plan output 拒绝；
+- `test_cli_integration.py` / `test_local.py` 验证真实 CLI/end-to-end fixture 按
+  planning → action 顺序运行，且 Environment 只收到 normal action；
+- 既有 DefaultAgent、InteractiveAgent、Stage 2 state/provenance 和 Stage 3 bounded Context regression
+  显式关闭 Initial Planning 后保持原测试关注点与行为不变。
 
-## 8. Verification
+## 10. Verification
 
 ```text
-py -m pytest -q tests/agents/test_planning.py tests/agents/test_state.py tests/agents/test_task_memory.py tests/agents/test_context.py tests/agents/test_context_runtime.py tests/agents/test_state_integration.py
-141 passed
+py -m pytest -q tests/run/test_cli_integration.py::test_output_file_is_created tests/run/test_local.py::test_local_end_to_end tests/agents/test_initial_planning.py tests/agents/test_planning.py
+26 passed
 
 py -m pytest -q tests/agents
-388 passed
+399 passed
 
 $env:Path = 'D:\Work\Python\Scripts;' + $env:Path
 py -m pytest -q
-740 passed, 4 skipped, 1 warning
+751 passed, 4 skipped, 1 warning
 
 py -m ruff check src tests
 All checks passed
@@ -109,23 +128,13 @@ git diff --check
 passed
 ```
 
-全量测试首次未补 console-script PATH 时为 `739 passed, 4 skipped, 1 failed`，唯一失败是
-`arkui-ut-agent --help` 子进程找不到已安装 executable。按既有 Windows 验证前置条件加入
-`D:\Work\Python\Scripts` 后全量通过；未修改测试规避环境问题。Warning 为既有 cache-control
-deprecated 参数提示。
+全量第一次运行在两个旧 end-to-end fixtures 上得到 `749 passed, 2 failed, 4 skipped`；失败原因是 fixtures
+仍直接返回 action、缺少新的初始 Plan。fixtures 随后改为真实 planning → action 序列，未通过关闭功能规避。
+Warning 为既有 cache-control deprecated 参数提示。
 
-## 9. Status / Scope
+## 11. Status / Scope
 
-Stage 4 / Slice 4A 实现与验证完成，当前无 Blocker。`PLAN.md` 只将已有代码和测试证明的
-“定义 `Plan` / `PlanStep`”标记为完成；Stage 4 其余 checklist 保持未开始。没有 scope creep，未开始 Slice 4B。
-`SPEC.md` 与 `DECISIONS.md` 只同步本 Slice 已实现的长期 identity boundary。
-
-## 10. Completion Checklist
-
-- [x] Plan / PlanStep validation；
-- [x] immutable / validated replacement update；
-- [x] AgentState serialization / restore；
-- [x] ContextBuilder structured plan consumption；
-- [x] runtime `step_id` / Evidence provenance boundary compatibility；
-- [x] Stage 2 / Stage 3 regression；
-- [x] 全量 pytest、Ruff、diff check。
+Stage 4 / Slice 4B 实现与验证完成，当前无 Blocker。`PLAN.md` 只勾选 `Initial Planning`；decision states、
+repeated detection、Stop Policy 和完整主 Agent Loop integration 保持未开始。没有修改 `SPEC.md` /
+`DECISIONS.md`，因为本 Slice 没有形成超出既有 4A identity boundary 的新长期架构约束。没有 scope creep，
+未开始 Slice 4C。

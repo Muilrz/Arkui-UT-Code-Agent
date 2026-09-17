@@ -89,7 +89,7 @@ context-local 去重，以及普通历史压力下关键 Evidence 保留；`test
 ## Stage 4 — Planning 与 Control Loop
 
 - [x] 定义 `Plan` / `PlanStep`。
-- [ ] Initial Planning。
+- [x] Initial Planning。
 - [ ] 决策状态：retrieve / act / diagnose / replan / repair / verify / finish。
 - [ ] repeated tool/input/observation detection。
 - [ ] Stop Policy。

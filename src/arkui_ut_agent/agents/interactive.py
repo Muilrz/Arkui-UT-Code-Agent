@@ -60,7 +60,8 @@ class InteractiveAgent(DefaultAgent):
         if self.config.mode == "human":
             match command := self._prompt_and_handle_slash_commands("[bold yellow]>[/bold yellow] "):
                 case "/y" | "/c":
-                    pass
+                    if self._should_create_initial_plan():
+                        self.create_initial_plan()
                 case _:
                     msg = {
                         "role": "user",
@@ -93,6 +94,10 @@ class InteractiveAgent(DefaultAgent):
             self.config.step_limit = int(input("New step limit: "))
             self.config.cost_limit = float(input("New cost limit: "))
             return super().query()
+
+    def _should_create_initial_plan(self) -> bool:
+        """Human-issued commands remain model-free; model-driven modes use planning."""
+        return self.config.mode != "human" and super()._should_create_initial_plan()
 
     @staticmethod
     def _stdin_is_interactive() -> bool:

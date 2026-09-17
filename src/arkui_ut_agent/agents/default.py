@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 from arkui_ut_agent import Environment, Model, __version__
 from arkui_ut_agent.agents.context import ContextBuilder
 from arkui_ut_agent.agents.integration import _evidence_from_tool_observation
+from arkui_ut_agent.agents.planning import _INITIAL_PLANNING_INSTRUCTION, _parse_initial_plan
 from arkui_ut_agent.agents.state import AgentState, MemoryUpdateEvent
 from arkui_ut_agent.exceptions import FormatError, InterruptAgentFlow, LimitsExceeded, TimeExceeded
 from arkui_ut_agent.models.utils.content_string import get_content_string
@@ -42,6 +43,8 @@ class AgentConfig(BaseModel):
     """Stop agent after this many seconds of wall-clock time. 0 means no limit."""
     max_consecutive_format_errors: int = 3
     """Exit after this many format errors in a row (0 = no limit)."""
+    initial_planning: bool = True
+    """Create a structured Plan before the first model-driven action step."""
     output_path: Path | None = None
     """Save the trajectory to this path."""
 
@@ -118,13 +121,18 @@ class DefaultAgent:
         )
         while True:
             try:
-                self.step()
+                if self._should_create_initial_plan():
+                    self.create_initial_plan()
+                else:
+                    self.step()
                 self.n_consecutive_format_errors = 0  # reset on any clean step
             except FormatError as e:
                 # The call was billed before parsing failed, so query() never got to charge it.
                 self.cost += e.messages[0].get("extra", {}).get("cost", 0.0)
                 for message in e.messages:
-                    message.setdefault("extra", {})["step_id"] = self._active_step_id
+                    extra = message.setdefault("extra", {})
+                    if extra.get("phase") != "initial_planning" and self._active_step_id is not None:
+                        extra["step_id"] = self._active_step_id
                 self.n_consecutive_format_errors += 1
                 if 0 < self.config.max_consecutive_format_errors <= self.n_consecutive_format_errors:
                     self.add_messages(
@@ -152,8 +160,61 @@ class DefaultAgent:
         """Query the LM, execute actions."""
         return self.execute_actions(self.query())
 
+    def _should_create_initial_plan(self) -> bool:
+        return bool(
+            self.config.initial_planning
+            and self.state is not None
+            and self.state.current_plan is None
+        )
+
+    def create_initial_plan(self) -> None:
+        """Generate and persist a Plan without allocating or executing a runtime step."""
+        self._check_query_limits()
+        try:
+            message = self._call_model(self._initial_planning_input_messages())
+        except FormatError as error:
+            for feedback in error.messages:
+                feedback.setdefault("extra", {}).setdefault("phase", "initial_planning")
+            raise
+        message.setdefault("extra", {})["phase"] = "initial_planning"
+        self.add_messages(message)
+        try:
+            plan = _parse_initial_plan(message)
+        except (TypeError, ValueError) as error:
+            feedback = self.model.format_message(
+                role="user",
+                content=f"Invalid initial Plan: {error}",
+                extra={"interrupt_type": "FormatError", "phase": "initial_planning"},
+            )
+            raise FormatError(feedback) from error
+        if self.state is None:  # The run setup establishes this invariant.
+            raise RuntimeError("AgentState must exist before initial planning.")
+        self.state = self.state.updated(current_plan=plan)
+
+    def _initial_planning_input_messages(self) -> list[dict]:
+        """Build a bounded planning-only view without replaying trajectory history."""
+        if self.state is None:
+            raise RuntimeError("AgentState must exist before initial planning.")
+        context = self.context_builder.build(self.state).text
+        planning_message = self.model.format_message(
+            role="user",
+            content=f"{_INITIAL_PLANNING_INSTRUCTION}\n\n{context}",
+        )
+        messages = [*copy.deepcopy(self.messages[:2]), planning_message]
+        if feedback := self._latest_runtime_feedback():
+            messages.append(feedback)
+        return messages
+
     def query(self) -> dict:
         """Query the model and return model messages. Override to add hooks."""
+        self._check_query_limits()
+        self._begin_step()
+        message = self._call_model(self._model_input_messages())
+        message.setdefault("extra", {})["step_id"] = self._active_step_id
+        self.add_messages(message)
+        return message
+
+    def _check_query_limits(self) -> None:
         if 0 < self.config.step_limit <= self.n_calls or 0 < self.config.cost_limit <= self.cost:
             raise LimitsExceeded(
                 {
@@ -170,12 +231,12 @@ class DefaultAgent:
                     "extra": {"exit_status": "TimeExceeded", "submission": ""},
                 }
             )
-        self._begin_step()
+
+    def _call_model(self, messages: list[dict]) -> dict:
+        """Make one visible, accounted call through the existing Model boundary."""
         self.n_calls += 1
-        message = self.model.query(self._model_input_messages())
-        message.setdefault("extra", {})["step_id"] = self._active_step_id
+        message = self.model.query(messages)
         self.cost += message.get("extra", {}).get("cost", 0.0)
-        self.add_messages(message)
         return message
 
     def _model_input_messages(self) -> list[dict]:

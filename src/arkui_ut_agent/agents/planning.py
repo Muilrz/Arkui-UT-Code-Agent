@@ -1,5 +1,6 @@
-"""Structured, task-local planning data contracts."""
+"""Structured, task-local planning data contracts and initial-plan parsing."""
 
+import json
 from typing import Annotated, Any
 
 from pydantic import (
@@ -14,6 +15,13 @@ from pydantic import (
 
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 PositiveInt = Annotated[int, Field(strict=True, ge=1)]
+
+_INITIAL_PLANNING_INSTRUCTION = """Create the initial plan for the current task.
+Use the existing single-action response transport, but do not return a shell command.
+The action's command string must contain only one compact JSON object matching:
+{"revision":1,"steps":[{"id":"...","description":"..."}],"active_step_id":"..."}
+Step ids must be unique. active_step_id may be null; the runtime will then select the first step.
+Do not perform the task, execute tools, or add fields outside this Plan schema."""
 
 
 class PlanStep(BaseModel):
@@ -70,6 +78,33 @@ class Plan(BaseModel):
     @model_serializer(mode="wrap")
     def _serialize_validated_plan(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         return handler(type(self).model_validate(dict(self)))
+
+
+def _parse_initial_plan(message: dict[str, Any]) -> Plan:
+    """Parse one normalized action transport as a validated initial Plan.
+
+    Model providers already normalize their action-capable responses to
+    ``extra.actions``. Initial planning reuses that boundary but never executes the
+    action. The command string is JSON data, not a shell command. A missing active
+    step deterministically selects the first validated PlanStep.
+    """
+    extra = message.get("extra")
+    actions = extra.get("actions") if isinstance(extra, dict) else None
+    if not isinstance(actions, list) or len(actions) != 1:
+        raise ValueError("Initial planning requires exactly one Plan action transport.")
+    action = actions[0]
+    if not isinstance(action, dict) or not isinstance(action.get("command"), str):
+        raise ValueError("Initial planning requires a string Plan payload in action.command.")
+    try:
+        payload = json.loads(action["command"])
+    except json.JSONDecodeError as error:
+        raise ValueError("Initial planning action.command must be valid JSON.") from error
+    if not isinstance(payload, dict):
+        raise ValueError("Initial planning JSON must be an object matching Plan.")
+    plan = Plan.model_validate(payload)
+    if plan.active_step_id is None:
+        plan = plan.updated(active_step_id=plan.steps[0].id)
+    return plan
 
 
 __all__ = ["Plan", "PlanStep"]

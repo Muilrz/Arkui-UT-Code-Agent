@@ -107,6 +107,7 @@ def default_config():
     config_path = Path("src/arkui_ut_agent/config/default.yaml")
     with open(config_path) as f:
         config = yaml.safe_load(f)
+    config["agent"]["initial_planning"] = False
     return config["agent"]
 
 
@@ -116,6 +117,7 @@ def toolcall_config():
     config_path = Path("src/arkui_ut_agent/config/mini.yaml")
     with open(config_path) as f:
         config = yaml.safe_load(f)
+    config["agent"]["initial_planning"] = False
     return config["agent"]
 
 

@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from pydantic import ValidationError
 from pydantic_core import PydanticSerializationError
 
 from arkui_ut_agent.agents import AgentState, Plan, PlanStep
+from arkui_ut_agent.agents.planning import _parse_initial_plan
+from arkui_ut_agent.models.test_models import make_output
 
 
 def _plan() -> Plan:
@@ -107,3 +111,34 @@ def test_agent_state_requires_structured_plan_and_runtime_step_label():
         AgentState(goal="task", current_plan={"steps": ["inspect"]})
     with pytest.raises(ValidationError):
         AgentState(goal="task", current_step={"id": "inspect"})
+
+
+def test_initial_plan_parser_uses_one_action_as_data_and_selects_first_step():
+    message = make_output("planning only", [{"command": json.dumps({
+        "revision": 1,
+        "steps": [
+            {"id": "inspect", "description": "Inspect the implementation"},
+            {"id": "verify", "description": "Run the focused test"},
+        ],
+        "active_step_id": None,
+    })}])
+
+    plan = _parse_initial_plan(message)
+
+    assert plan.active_step_id == "inspect"
+    assert plan.steps == _plan().updated(revision=1, active_step_id="inspect").steps
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        make_output("missing transport", []),
+        make_output("ambiguous transport", [{"command": "{}"}, {"command": "{}"}]),
+        make_output("not json", [{"command": "inspect the source"}]),
+        make_output("wrong shape", [{"command": "[]"}]),
+        make_output("invalid Plan", [{"command": '{"steps":[]}'}]),
+    ],
+)
+def test_initial_plan_parser_rejects_invalid_or_ambiguous_output(message):
+    with pytest.raises((ValidationError, ValueError)):
+        _parse_initial_plan(message)

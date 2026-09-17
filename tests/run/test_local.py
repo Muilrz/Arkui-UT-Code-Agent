@@ -1,3 +1,4 @@
+import json
 import re
 from unittest.mock import patch
 
@@ -13,8 +14,16 @@ def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0
         match = re.search(r"```mswea_bash_command\s*\n(.*?)\n```", text, re.DOTALL)
         return [{"command": match.group(1)}] if match else []
 
+    plan = {
+        "revision": 1,
+        "steps": [{"id": "execute", "description": "Execute and verify the requested task"}],
+        "active_step_id": "execute",
+    }
     return DeterministicModel(
-        outputs=[make_output(text, parse_command(text), cost=cost_per_call) for text in text_outputs],
+        outputs=[
+            make_output("Initial plan", [{"command": json.dumps(plan)}], cost=cost_per_call),
+            *[make_output(text, parse_command(text), cost=cost_per_call) for text in text_outputs],
+        ],
         cost_per_call=cost_per_call,
         **kwargs,
     )
@@ -52,10 +61,11 @@ def test_local_end_to_end(local_test_data):
     messages = agent.messages
 
     # Verify we have the right number of messages
-    # Should be: system + user (initial) + (assistant + user) * number_of_steps
-    expected_total_messages = 2 + (len(model_responses) * 2)
+    # system + task + planning response + (assistant + observation) per action step
+    expected_total_messages = 3 + (len(model_responses) * 2)
     assert len(messages) == expected_total_messages, f"Expected {expected_total_messages} messages, got {len(messages)}"
 
-    assert_observations_match(expected_observations, messages)
+    assert messages[2]["extra"]["phase"] == "initial_planning"
+    assert_observations_match(expected_observations, [*messages[:2], *messages[3:]])
 
-    assert agent.n_calls == len(model_responses), f"Expected {len(model_responses)} steps, got {agent.n_calls}"
+    assert agent.n_calls == len(model_responses) + 1
