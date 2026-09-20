@@ -103,8 +103,8 @@ contract regression 与全量测试保持通过。Stage 4 checklist、Acceptance
 
 ## Stage 5 — RetrievalRouter
 
-- [ ] 定义少量 Retrieval Intent。
-- [ ] Intent → KB/source/SemanticProvider mapping。
+- [x] 定义少量 Retrieval Intent。
+- [x] Intent → KB/source/SemanticProvider mapping。
 - [ ] 实现 KB → source verification flow。
 - [ ] 实现 Test localization flow。
 - [ ] 定义 semantic escalation criteria。

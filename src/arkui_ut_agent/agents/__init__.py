@@ -15,6 +15,7 @@ from arkui_ut_agent.agents.context import (
 )
 from arkui_ut_agent.agents.control import ControlDecision, DecisionKind
 from arkui_ut_agent.agents.planning import Plan, PlanStep
+from arkui_ut_agent.agents.retrieval import RetrievalDestination, RetrievalIntent, RetrievalRouter
 from arkui_ut_agent.agents.state import AgentState, Evidence, EvidenceMemory, MemoryUpdateEvent, StopReason, TaskMemory
 from arkui_ut_agent.agents.stop import StopPolicy
 from arkui_ut_agent.agents.trace import ExecutionStepTrace
@@ -59,6 +60,9 @@ __all__ = [
     "MemoryUpdateEvent",
     "Plan",
     "PlanStep",
+    "RetrievalDestination",
+    "RetrievalIntent",
+    "RetrievalRouter",
     "StopReason",
     "StopPolicy",
     "TaskMemory",

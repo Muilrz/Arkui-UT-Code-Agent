@@ -2,80 +2,86 @@
 
 ## 1. Slice
 
-**Stage 4 / Slice 4E — Stop Policy & Control Loop Integration**
+**Stage 5 / Slice 5A — Retrieval Intent 与确定性路由契约**
 
-所属清单：`PLAN.md` 的 Stage 4。本文件已替换完成验收的 Stage 4 / Slice 4D 交接状态。
+所属清单：`PLAN.md` 的 Stage 5。本文件已替换已完成的 Stage 4 / Slice 4E 交接状态。
 
-## 2. Objective / In Scope
+## 2. Objective / Status
 
-完成 Stage 4 最后一个 Slice：建立正式 Stop Policy，并把 Initial Planning、Decision/Diagnose、Replan、
-Repeat Detection 与 Stop Policy 收口到默认主 Agent Loop。
+已完成 Stage 5 的最小 Retrieval contract：调用方先明确当前信息需求，`RetrievalRouter` 再把一个
+`RetrievalIntent` 确定性映射到单一 retrieval destination。Router 不判断“缺什么信息”，不执行工具，
+不做 Planner reasoning，也不编排多步 retrieval flow。
 
-支持现有 `StopReason`：
+本 Slice 已完成且当前无 Blocker。
 
-```text
-success / step_limit / cost_limit / repeated_failure / no_new_evidence /
-tool_unavailable / irrecoverable_failure
-```
+## 3. Retrieval Contract
 
-所有正式 terminal outcome 必须写入 `AgentState.stop_reason`。`finish` 必须形成 `success`；step/cost limit
-必须区分；首次 exact repeat 先 Replan，Replan 后同一 repeat loop 在没有新 Evidence 时停止。
-
-## 3. Implemented Control Semantics
-
-- `retrieve / act / repair / verify`：保留为当前 step 的显式 decision，进入既有 action boundary；
-- `diagnose`：再次消费同一批 bounded actual Observation records 进行 control-only Diagnose；
-- `replan`：进入 4D Replanner；
-- `finish`：不再调用 Model/Environment，终止为 `success`；
-- 没有 actionable decision 时，默认 control loop 不允许静默执行普通 action；
-- legacy/baseline 单一职责测试可显式关闭 integrated control loop，但每个实际 step 仍会获得可追踪 decision。
-
-## 4. Stop Signals
-
-- step/cost：现有 counters/limits；
-- first exact repeat：Replan，不终止；
-- same repeat loop after Replan：Evidence identity set 未变化则 `no_new_evidence`，有新 Evidence 但仍回到同一
-  exact loop 则 `repeated_failure`；
-- `tool_unavailable` / `irrecoverable_failure`：只识别真实 failed Observation 中同名 diagnostic code；
-- legacy Submitted：`success`；不可恢复的 format/uncaught terminal path：`irrecoverable_failure`。
-
-## 5. Minimal Step Trace
-
-为 Stage 4 Acceptance 添加 task-local、deterministic、可序列化的最小 runtime step trace：
+支持的 intent：
 
 ```text
-step_id / current_goal / decision / actions / observations / state_updates
+find_component
+find_source
+find_test
+read_implementation
+search_text
+resolve_symbol
+find_references
+find_callers
+find_callees
+find_implementations
 ```
 
-不记录 Stage 9 才需要的完整 timing、token、edit/build/test aggregation 或 evaluation metadata。
+固定映射：
 
-## 6. Out of Scope
+```text
+find_component / find_source / find_test
+→ kb_search
 
-不实现 RetrievalRouter、SemanticProvider、Task Relation Graph、Stage 8 UT workflow/failure classification 或
-Stage 9 完整 Execution Trace framework。不开始 Stage 5，不检查 CI，不创建 commit。
+read_implementation
+→ read_file
 
-## 7. Implementation / Tests
+search_text
+→ rg_search
 
-- `agents/stop.py`：把已有、可验证的 runtime signal 映射为正式 `StopReason`；
-- `agents/trace.py`：定义 immutable/validated 的 Stage 4 最小 `ExecutionStepTrace`；
-- `agents/default.py`：主循环接入 planning、decision/diagnose、replan、repeat guard 与 stop；
-- `agents/interactive.py`：保持 human/confirm/yolo 继承路径和已有人工提高 limit 后续跑行为；
-- `tests/agents/test_stop_policy.py`：覆盖 finish、step/cost limit、四种 actionable decision、diagnose、
-  repeat → Replan → stop、真实 terminal diagnostics、decision gate 和 trace serialization；
-- 既有 4A–4D / Stage 2–3 regression 对新显式 action decision 做了最小断言/配置适配。
+resolve_symbol / find_references / find_callers / find_callees / find_implementations
+→ semantic_provider
+```
 
-## 8. Verification / Status
+`semantic_provider` 在本 Slice 中只是稳定的 destination 标识，不存在 Provider、MCP、clangd/LSP、
+health/capability detection 或外部调用实现。调用方必须传入 `RetrievalIntent`；raw string、未知 intent 和
+其他无效对象均显式失败，不进行模糊匹配、默认路由或静默猜测。
+
+## 4. Implementation / Tests
+
+- `src/arkui_ut_agent/agents/retrieval.py`：定义 `RetrievalIntent`、`RetrievalDestination` 和无状态的
+  `RetrievalRouter`，使用只读固定映射完成纯路由；
+- `src/arkui_ut_agent/agents/__init__.py`：导出 Retrieval contract；
+- `tests/agents/test_retrieval.py`：逐项覆盖全部 intent、四类 destination 区分、invalid/unsupported 显式失败、
+  重复输入稳定性，以及 Router 无状态且不依赖 Planner/Model；
+- `docs/PLAN.md`：仅勾选已经由本 Slice 证明的 Retrieval Intent 与 mapping 两项。
+
+## 5. Out of Scope / Boundary Confirmation
+
+未接入默认 Agent runtime loop，未修改 Planner，未实现 KB → source verification、Test localization、
+semantic escalation criteria 或 Stage 5 Acceptance。未实现任何 Stage 6 `SemanticProvider` / MCP / clangd/LSP
+backend，也未引入 Repository Index、Vector DB、RAG、Persistent Graph、Repository Snapshot、持久索引或
+其他 Repository Intelligence 基础设施。Stage 0–4 的 planning/runtime step identity 与 Evidence contract 未变。
+
+## 6. Verification
 
 实际验证：
 
 ```text
+py -m pytest -q tests/agents/test_retrieval.py
+27 passed
+
 py -m pytest -q tests/agents
-434 passed
+461 passed
 
 $agentScripts = py -c "import sysconfig; print(sysconfig.get_path('scripts'))"
 $env:PATH = "$agentScripts;$env:PATH"
 py -m pytest -q
-786 passed, 4 skipped, 1 existing deprecation warning
+813 passed, 4 skipped, 1 existing deprecation warning
 
 py -m ruff check src tests
 All checks passed!
@@ -84,9 +90,4 @@ git diff --check
 passed（仅 Git 的 LF→CRLF working-copy notices）
 ```
 
-第一次直接执行全量命令时，环境 PATH 缺少已安装 console script 所在的 `D:\Work\Python\Scripts`，因此
-`test_arkui_ut_agent_help` 报 `FileNotFoundError`；把当前解释器的 Scripts 目录仅加入验证进程 PATH 后，目标测试
-和全量测试均通过，未修改测试来规避该环境问题。
-
-Stage 4 的全部 checklist、Acceptance 与 Exit Criteria 已由实现和测试满足，现已正式收口。没有开始 Stage 5，
-没有检查 CI，也没有创建 commit。当前无 Blocker。
+未检查 CI，未创建 commit。
